@@ -1,0 +1,16 @@
+#python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+#experiment data
+experiments/*/
+
+models/*.ilp
+
+#OS
+.DS_Store
+Thumbs.db
+
