@@ -40,8 +40,10 @@ class IlastikRunner :
 
         if data.ndim != 3 :
             raise ValueError(f"expected 3D probability map (H, W, classes), got shape {data.shape} instead")
-
-        return data[:, :, 0] #cell probability channel
+        
+        #cell probability channel
+        #perform a flip to fix coordinate system mismatch from ilastik
+        return np.flipud(data[:, :, 0]) 
 
 
     def run_on_frames(self, input_paths: list, output_dir: str, n_channels: int = 3) :

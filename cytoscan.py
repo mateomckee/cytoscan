@@ -4,7 +4,25 @@ import argparse
 import yaml
 import tempfile
 
+#temp
+import matplotlib.pyplot as plt
+
 from src.ilastik_runner import IlastikRunner
+from src.cell_detector import detect_cells
+
+import matplotlib.pyplot as plt
+
+def visualize_detections(image_path: str, detections: list):
+    img = plt.imread(image_path)
+    
+    plt.imshow(img)
+    for d in detections:
+        plt.plot(d.centroid_x, d.centroid_y, 'b+', markersize=10, markeredgewidth=1.0)
+    
+    plt.axis('off')
+    plt.tight_layout()
+    plt.savefig("detections_out.png", dpi=150)
+    plt.show()
 
 def parse_args() :
     parser = argparse.ArgumentParser(description="Offline microscopy perception tool for cell tracking in Sun Lab experiments")
@@ -69,15 +87,10 @@ def main() :
             prob_path = os.path.join(tmp_dir, filename)
             cur_prob = runner.read_prob_map(prob_path)
 
-            print(cur_prob)    
-        
             #--- STEP 4 ---
-            #detections = detect_cells(cur_prob, prob_threshold)
-
-
+            detections = detect_cells(cur_prob)
             
-        
-
+            visualize_detections(fp, detections)
 
 
 
