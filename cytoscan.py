@@ -47,16 +47,39 @@ def main() :
         if filename.endswith(".tif") :
             frame_path = os.path.join(experiment_dir_str, filename)
             frames[frame_index] = frame_path
-        frame_index += 1
+            frame_index += 1
 
     print(f"Running ilastik on {len(frames)} frame(s)...")
 
     with tempfile.TemporaryDirectory() as tmp_dir :
         #--- STEP 2 ---
-        #run ilastik on a subprocess, outputting HDF5 probability maps into the 
+        #run ilastik on a subprocess, outputting HDF5 probability maps into a temp dir in disk
+        
         runner.run_on_frames(list(frames.values()), tmp_dir, n_channels)
+        print("ilastik done")
 
-    print("ilastik done")
+        #--- STEP 3 ---
+        #load probability maps from disk
+        
+        for fi, fp in frames.items() :
+            #convert original .tif filename to an ilastik output .h5 filename
+            base = os.path.splitext(os.path.basename(fp))[0]
+            filename = base + "_Probabilities.h5"
+
+            prob_path = os.path.join(tmp_dir, filename)
+            cur_prob = runner.read_prob_map(prob_path)
+
+            print(cur_prob)    
+        
+            #--- STEP 4 ---
+            #detections = detect_cells(cur_prob, prob_threshold)
+
+
+            
+        
+
+
+
 
 
 if __name__ == "__main__" :
