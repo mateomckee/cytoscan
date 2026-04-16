@@ -2,6 +2,9 @@ import os
 import sys
 import argparse
 import yaml
+import tempfile
+
+from src.ilastik_runner import IlastikRunner
 
 def parse_args() :
     parser = argparse.ArgumentParser(description="Offline microscopy perception tool for cell tracking in Sun Lab experiments")
@@ -28,11 +31,14 @@ def main() :
     experiment_dir_str = cfg.get("experiment", "")
     if not experiment_dir_str :
         sys.exit(f"[main] ERROR: 'experiment' not set in {args.c}")
+    
+    #--- init ---
+    runner = IlastikRunner(ilastik_model, ilastik_exe=ilastik_exe)
+    frames: Dict[int, str] = {} 
+    n_channels = 3   # BGR from OpenCV
 
     #--- STEP 1 ---
     #gather all tif frames to analyze in experiment
-
-    frames: Dict[int, str] = {} #frame_index -> .tif file name
 
     experiment_dir = os.fsencode(experiment_dir_str)
     frame_index = 0
@@ -43,12 +49,16 @@ def main() :
             frames[frame_index] = frame_path
         frame_index += 1
 
-    print(frames)
+    print(list(frames.values()))
+    print(f"Running ilastik on {len(frames)} frames")
 
-    #--- STEP 2 ---
-    #run ilastik on .tif files using the given .ilp model
+    with tempfile.TemporaryDirectory() as tmp_dir :
+        #--- STEP 2 ---
+        #run ilastik on a subprocess, outputting HDF5 probability maps into the 
+        runner.run_on_frames(list(frames.values()), tmp_dir, n_channels)
 
-    #ilasitk_runner
+    print("ilastik done")
+
 
 if __name__ == "__main__" :
     main()
