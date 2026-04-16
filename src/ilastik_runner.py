@@ -35,10 +35,7 @@ class IlastikRunner :
 
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-        stop_event = threading.Event()
-
         _, stderr = process.communicate()
-        stop_event.set()
 
         if process.returncode != 0 :
             raise RuntimeError(

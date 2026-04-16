@@ -49,8 +49,7 @@ def main() :
             frames[frame_index] = frame_path
         frame_index += 1
 
-    print(list(frames.values()))
-    print(f"Running ilastik on {len(frames)} frames")
+    print(f"Running ilastik on {len(frames)} frame(s)...")
 
     with tempfile.TemporaryDirectory() as tmp_dir :
         #--- STEP 2 ---
