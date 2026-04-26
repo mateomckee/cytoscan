@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import List
 import numpy as np
 from scipy import ndimage
+import matplotlib.pyplot as plt
 
 @dataclass
 class Detection :
@@ -36,3 +37,17 @@ def detect_cells(prob_map: np.ndarray, prob_threshold: float = 0.7, min_cell_are
         ))
 
     return detections
+
+def visualize_detections(image_path: str, detections: list):
+    img = plt.imread(image_path)
+    
+    plt.imshow(img)
+    for d in detections:
+        plt.plot(d.centroid_x, d.centroid_y, 'b+', markersize=10, markeredgewidth=1.0)
+        plt.text(d.centroid_x + 5, d.centroid_y, f"({d.centroid_x:.0f}, {d.centroid_y:.0f})",
+                 color='cyan', fontsize=5)
+    
+    plt.axis('off')
+    plt.tight_layout()
+    plt.savefig("detections_out.png", dpi=150)
+    plt.show()
