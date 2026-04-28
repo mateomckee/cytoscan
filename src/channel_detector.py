@@ -1,75 +1,99 @@
 import cv2
 import numpy as np
-import matplotlib.pyplot as plt
+from scipy.signal import medfilt
+
+WALL_DEG = 2
+INTERFACE_DEG = 4
+
+BASE_INSET = 15
+
+def _load_right_half(path):
+    img = cv2.imread(path)
+    x_offset = int(img.shape[1] * 0.4)
+    gray = cv2.cvtColor(img[:, x_offset:], cv2.COLOR_BGR2GRAY)
+    return gray, x_offset
+
+
+def _uncrop_coeffs(coeffs, x_offset):
+    out = coeffs.copy()
+    out[-1] += x_offset
+    return out
+
 
 def detect_walls(br_frame: str):
-    img = cv2.imread(br_frame)
-    h, w = img.shape[:2]
-    x_offset = int(w * 0.6)
-    img = img[:, x_offset:]
+    gray, x_offset = _load_right_half(br_frame)
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (15, 15), 0)
-    clahe = cv2.createCLAHE(clipLimit=1.0, tileGridSize=(16, 16))
-    enhanced = clahe.apply(blurred)
-    edges = cv2.Canny(enhanced, 30, 100)
+    gx = cv2.Sobel(blurred, cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(blurred, cv2.CV_32F, 0, 1, ksize=3)
+    mag = cv2.magnitude(gx, gy)
 
-    y_pts, x_pts = np.where(edges > 0)
-    mid_x = edges.shape[1] // 2
+    thresh = (mag > np.percentile(mag, 92)).astype(np.uint8) * 255
+    closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE,
+                              cv2.getStructuringElement(cv2.MORPH_RECT, (15, 1)))
+    closed = cv2.morphologyEx(closed, cv2.MORPH_CLOSE,
+                              cv2.getStructuringElement(cv2.MORPH_RECT, (1, 25)))
 
-    def fit_wall(mask):
-        wy = y_pts[mask]
-        wx = x_pts[mask]
-        rows = np.unique(wy)
-        median_x = [np.median(wx[wy == r]) for r in rows]
-        return np.polyfit(rows, median_x, deg=2)
+    contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)[:2]
+    left_c, right_c = sorted(contours, key=lambda c: c[:, 0, 0].mean())
 
-    left_coeffs = fit_wall(x_pts < mid_x)
-    right_coeffs = fit_wall(x_pts >= mid_x)
+    def fit(c):
+        mask = np.zeros_like(gray)
+        cv2.drawContours(mask, [c], -1, 255, -1)
+        ys, xs = np.where(mask > 0)
+        rows = np.unique(ys)
+        centers     = np.array([(y, xs[ys == y].mean()) for y in rows])
+        half_widths = np.array([(xs[ys == y].max() - xs[ys == y].min()) / 2 for y in rows])
+        coeffs = np.polyfit(centers[:, 0], centers[:, 1], WALL_DEG)
+        return centers, coeffs, half_widths
 
-    left_coeffs[-1] += x_offset
-    right_coeffs[-1] += x_offset
+    left_centers,  left_coeffs,  left_hw  = fit(left_c)
+    right_centers, right_coeffs, right_hw = fit(right_c)
 
-    return left_coeffs, right_coeffs
+    suggested_inset = int(np.percentile(np.concatenate([left_hw, right_hw]), 95)) + BASE_INSET
 
-def detect_interface(br_frame: str, left_coeffs, right_coeffs):
-    img = cv2.imread(br_frame)
+    #shift back to full-image coordinates
+    left_coeffs  = _uncrop_coeffs(left_coeffs,  x_offset)
+    right_coeffs = _uncrop_coeffs(right_coeffs, x_offset)
+    left_centers[:, 1]  += x_offset
+    right_centers[:, 1] += x_offset
 
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (11, 11), 0)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    enhanced = clahe.apply(blurred)
-    edges = cv2.Canny(enhanced, 20, 60)
+    return left_centers, left_coeffs, right_centers, right_coeffs, suggested_inset
 
-    y_pts, x_pts = np.where(edges > 0)
+def detect_interface(br_frame: str, left_coeffs: np.ndarray, right_coeffs: np.ndarray, inset: int = 5):
+    gray, x_offset = _load_right_half(br_frame)
+    h, w = gray.shape
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    inter_wall_mask = np.array([
-        (int(np.polyval(left_coeffs, y)) + 5 < x < int(np.polyval(right_coeffs, y)) - 5)
-        and abs(x - (np.polyval(left_coeffs, y) + np.polyval(right_coeffs, y)) / 2) < 30
-        for x, y in zip(x_pts, y_pts)
-    ])
+    # 1-D horizontal gradient — interface = steepest intensity transition per row
+    grad = np.abs(cv2.Sobel(blurred, cv2.CV_32F, 1, 0, ksize=3))
 
-    wy = y_pts[inter_wall_mask]
-    wx = x_pts[inter_wall_mask]
+    left_in  = left_coeffs.copy();  left_in[-1]  -= x_offset; left_in[-1]  += inset
+    right_in = right_coeffs.copy(); right_in[-1] -= x_offset; right_in[-1] -= inset
 
-    if len(wy) < 10:
-        raise RuntimeError("not enough edge points in inter-wall region")
+    points = []
+    for y in range(h):
+        xl = max(0, int(np.polyval(left_in,  y)))
+        xr = min(w, int(np.polyval(right_in, y)))
+        if xr - xl < 3:
+            continue
+        x_best = xl + int(np.argmax(grad[y, xl:xr]))
+        points.append((y, x_best))
+    points = np.array(points, dtype=np.float64)
+    points[:, 1] = medfilt(points[:, 1], kernel_size=15)
 
-    rows = np.unique(wy)
-    median_x = [np.median(wx[wy == r]) for r in rows]
-    interface_coeffs = np.polyfit(rows, median_x, deg=2)
+    keep = np.ones(len(points), dtype=bool)
+    for _ in range(5):
+        coeffs = np.polyfit(points[keep, 0], points[keep, 1], INTERFACE_DEG)
+        res = points[:, 1] - np.polyval(coeffs, points[:, 0])
+        mad = np.median(np.abs(res - np.median(res))) + 1e-9
+        new_keep = np.abs(res) < 3 * 1.4826 * mad
+        if np.array_equal(new_keep, keep):
+            break
+        keep = new_keep
 
-    return interface_coeffs
+    coeffs = _uncrop_coeffs(coeffs, x_offset)
+    points[:, 1] += x_offset
 
-def visualize_curves(br_frame: str, curves: list):
-    img = cv2.imread(br_frame)
-    h, w = img.shape[:2]
-
-    for coeffs, color in curves:
-        for y in range(h):
-            x = int(np.polyval(coeffs, y))
-            if 0 <= x < w:
-                cv2.circle(img, (x, y), 1, color, -1)
-
-    cv2.imwrite("curves_out.png", img)
-
+    return points, coeffs

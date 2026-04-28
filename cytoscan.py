@@ -14,17 +14,25 @@ import matplotlib.pyplot as plt
 
 from src.ilastik_runner import IlastikRunner
 from src.cell_detector import detect_cells, visualize_detections
-from src.channel_detector import detect_walls, detect_interface, visualize_curves
+from src.channel_detector import detect_walls, detect_interface
 
 import matplotlib.pyplot as plt
 
 @dataclass
 class FrameDetections:
-    left_wall:       np.ndarray   #coeffs
-    right_wall:      np.ndarray   #coeffs
-    interface:       np.ndarray   #coeffs
-    cells:           list         #list of Detection
-    is_valid:        bool         #interface stability flag
+    left_coeffs:        np.ndarray   #coeffs
+    left_centers:       np.ndarray   #raw points of wall contour center, (y, x_mean) vertical function f(y) = x
+
+    right_coeffs:       np.ndarray   #coeffs
+    right_centers:      np.ndarray   #raw points
+
+    wall_inset:         int
+
+    interface_coeffs:   np.ndarray   #coeffs
+    interface_centers:  np.ndarray   #raw points
+
+    cells:              list         #list of Detection
+    is_valid:           bool         #interface stability flag
 
 def visualize(experiment_dir_str: str, br_frame: str, frame_det: FrameDetections):
     os.makedirs(f"{experiment_dir_str}/output", exist_ok=True)
@@ -35,16 +43,24 @@ def visualize(experiment_dir_str: str, br_frame: str, frame_det: FrameDetections
     fig, ax = plt.subplots(figsize=(8, 10))
     ax.imshow(img)
 
-    # walls and interface
+    # inset wall coeffs (shifted inward by frame_det.wall_inset)
+    left_in  = frame_det.left_coeffs.copy()
+    right_in = frame_det.right_coeffs.copy()
+    left_in[-1]  += frame_det.wall_inset
+    right_in[-1] -= frame_det.wall_inset
+
+    # walls, inset walls, and interface
     for coeffs, color in [
-        (frame_det.left_wall,  'lime'),
-        (frame_det.right_wall, 'red'),
-        (frame_det.interface,  'cyan')
+        (frame_det.left_coeffs,      'lime'),
+        (frame_det.right_coeffs,     'red'),
+        (left_in,                    'yellow'),
+        (right_in,                   'yellow'),
+        (frame_det.interface_coeffs, 'cyan'),
     ]:
         if coeffs is None:
             continue
-        xs = [np.polyval(coeffs, y) for y in range(h)]
-        ys = list(range(h))
+        ys = np.arange(h)
+        xs = np.polyval(coeffs, ys)
         ax.plot(xs, ys, color=color, linewidth=1)
 
     # cells
@@ -68,10 +84,11 @@ def count_cells_per_region(cells: list, interface_coeffs: np.ndarray) -> dict:
             counts["right"] += 1
     return counts
 
-#reads input frame pairs (brightfield, fluorescent) and outputs them as a dictionary
-def load_frame_pairs(experiment_dir: str) -> Dict[int, tuple[str, str]]:
-    bf_dir = os.path.join(experiment_dir, "brightfield")
+#reads input frame pairs (brightfield, fluorescent, mixed) and outputs them as a dictionary
+def load_frames(experiment_dir: str) -> Dict[int, tuple[str, str]]:
+    br_dir = os.path.join(experiment_dir, "brightfield")
     fl_dir = os.path.join(experiment_dir, "fluorescent")
+    mx_dir = os.path.join(experiment_dir, "mixed")
 
     def load_dir(path: str) -> list[str]:
         encoded = os.fsencode(path)
@@ -82,13 +99,14 @@ def load_frame_pairs(experiment_dir: str) -> Dict[int, tuple[str, str]]:
                 files.append(os.path.join(path, filename))
         return files
 
-    bf_files = load_dir(bf_dir)
+    br_files = load_dir(br_dir)
     fl_files = load_dir(fl_dir)
+    mx_files = load_dir(mx_dir)
 
-    if len(bf_files) != len(fl_files):
-        raise RuntimeError(f"frame count mismatch: {len(bf_files)} bf vs {len(fl_files)} fl")
+    if not (len(br_files) == len(fl_files) == len(mx_files)):
+        raise RuntimeError(f"frame count mismatch: {len(br_files)} br, {len(fl_files)} fl, {len(mx_files)} mx")
 
-    return {i: (bf, fl) for i, (bf, fl) in enumerate(zip(bf_files, fl_files))}
+    return {i: (br, fl, mx) for i, (br, fl, mx) in enumerate(zip(br_files, fl_files, mx_files))}
 
 #config and args
 def parse_args() :
@@ -120,11 +138,11 @@ def main() :
     runner = IlastikRunner(ilastik_model, ilastik_exe=ilastik_exe)
     n_channels = 3 #BGR from OpenCV
 
-    #
+    print(f"[cytoscan] experiment: {os.path.basename(experiment_dir_str)}, ilastik_model: {os.path.basename(ilastik_model)}")
 
     #--- STEP 1 ---
     #gather all tif frames to analyze in experiment
-    frame_pairs = load_frame_pairs(experiment_dir_str) 
+    frames = load_frames(experiment_dir_str) 
 
     #dict that stores all frames with detections and the list of their detections
     detections: Dict[int, FrameDetections] = {}
@@ -133,15 +151,15 @@ def main() :
         #--- STEP 2 ---
         #run ilastik on a subprocess, outputting HDF5 probability maps into a temp dir in disk
         
-        print(f"[ilastik_runner] running ilastik on {len(frame_pairs)} frame(s)...")
+        print(f"[ilastik_runner] running ilastik on {len(frames)} frame(s)...")
         #run only on fluorescent frames
-        fl_frames = [fl for _, fl in frame_pairs.values()]
+        fl_frames = [fl for _, fl, _ in frames.values()]
         runner.run_on_frames(fl_frames, tmp_dir, n_channels)
-        print("[ilastik_runner] ilastik done")
 
+        print(f"[channel_detector] detecting channel walls and interface on {len(frames)} frame(s)...")
         #--- STEP 3 ---
         #load probability maps from disk
-        for fi, (br, fl) in frame_pairs.items() :
+        for fi, (br, fl, mx) in frames.items() :
             #get the name of the ilastik output file, which is the original filename + _Probabilities.h5, within the temp_dir
             base = os.path.splitext(os.path.basename(fl))[0] #both br and fl should have same base filename
             output_filename = base + "_Probabilities.h5"
@@ -152,33 +170,32 @@ def main() :
             #--- STEP 4 ---
             #gather detections from the probability maps, output to detections dict if anything is detected
             dets = detect_cells(cur_prob)
-        
-            if(len(dets) >= 1) :
-                detections[fi] = FrameDetections(cells = dets, left_wall = None, right_wall = None, interface = None, is_valid = True)
+
+            #skip frames where no detections ocurred
+            if(len(dets) < 1) : continue
+
+            left_centers, left_coeffs, right_centers, right_coeffs, suggested_inset = detect_walls(br)
+            interface_centers, interface_coeffs = detect_interface(br, left_coeffs, right_coeffs, suggested_inset)
+
+            detections[fi] = FrameDetections(cells = dets, left_centers = left_centers, left_coeffs = left_coeffs, right_centers = right_centers, right_coeffs = right_coeffs, wall_inset = suggested_inset, interface_centers = interface_centers, interface_coeffs = interface_coeffs, is_valid = True)
 
     print("[cytoscan] REPORT:")
 
     #--- STEP 5 ---
-    #on all frames that had detections, detect the channel walls and interface (brightfield only)
-    for fi in detections.keys() :
+    for fi, (br, fl, mx) in frames.items() :
+        #skip zero-det frames
+        if(fi not in detections) :
+            printf(f"{os.path.basename(max)}: no detections")
+            continue
+        
         frame_dets = detections[fi]
-        br_frame, fl_frame = frame_pairs[fi]
-
-        #calculate channel walls + interface mathematical curve
-        left_coeffs, right_coeffs = detect_walls(br_frame);
-        interface_coeffs = detect_interface(br_frame, left_coeffs, right_coeffs)
-
-        #store in frame_dets
-        frame_dets.left_wall = left_coeffs
-        frame_dets.right_wall = right_coeffs
-        frame_dets.interface = interface_coeffs
 
         #calculations
-        counts = count_cells_per_region(frame_dets.cells, frame_dets.interface)
-        print(f"{os.path.basename(br_frame)}: {len(frame_dets.cells)} cells\n\tleft: {counts['left']}\n\tright: {counts['right']}") 
+        counts = count_cells_per_region(frame_dets.cells, frame_dets.interface_coeffs)
+        print(f"{os.path.basename(mx)}: {len(frame_dets.cells)} cells\n\tleft: {counts['left']}\n\tright: {counts['right']}") 
 
         #visualization
-        visualize(experiment_dir_str, br_frame, frame_dets)
+        visualize(experiment_dir_str, br, frame_dets)
 
 if __name__ == "__main__" :
     main()

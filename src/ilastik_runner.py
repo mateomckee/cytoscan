@@ -43,7 +43,7 @@ class IlastikRunner :
         
         #cell probability channel
         #perform a flip to fix coordinate system mismatch from ilastik
-        return np.flipud(data[:, :, 0])
+        return data[:, :, 0]
 
 
     def run_on_frames(self, input_paths: list, output_dir: str, n_channels: int = 3) :
