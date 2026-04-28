@@ -60,24 +60,24 @@ def detect_walls(br_frame: str):
 
     return left_centers, left_coeffs, right_centers, right_coeffs, suggested_inset
 
-
-def detect_interface(br_frame: str, left_coeffs: np.ndarray, right_coeffs: np.ndarray, polarity: str = 'bright', inset: int = BASE_INSET):
+def detect_interface(br_frame: str, left_coeffs: np.ndarray, right_coeffs: np.ndarray, inset: int = 5):
     gray, x_offset = _load_right_half(br_frame)
     h, w = gray.shape
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
 
-    #walls arrive in full-image coords, shift to crop space, then inset
+    # 1-D horizontal gradient — interface = steepest intensity transition per row
+    grad = np.abs(cv2.Sobel(blurred, cv2.CV_32F, 1, 0, ksize=3))
+
     left_in  = left_coeffs.copy();  left_in[-1]  -= x_offset; left_in[-1]  += inset
     right_in = right_coeffs.copy(); right_in[-1] -= x_offset; right_in[-1] -= inset
 
-    pick = np.argmin if polarity == 'dark' else np.argmax
     points = []
     for y in range(h):
         xl = max(0, int(np.polyval(left_in,  y)))
         xr = min(w, int(np.polyval(right_in, y)))
         if xr - xl < 3:
             continue
-        x_best = xl + int(pick(blurred[y, xl:xr]))
+        x_best = xl + int(np.argmax(grad[y, xl:xr]))
         points.append((y, x_best))
     points = np.array(points, dtype=np.float64)
     points[:, 1] = medfilt(points[:, 1], kernel_size=15)
@@ -92,7 +92,6 @@ def detect_interface(br_frame: str, left_coeffs: np.ndarray, right_coeffs: np.nd
             break
         keep = new_keep
 
-    #shift back to full-image coordinates
     coeffs = _uncrop_coeffs(coeffs, x_offset)
     points[:, 1] += x_offset
 

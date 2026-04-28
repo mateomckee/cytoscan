@@ -175,7 +175,7 @@ def main() :
             if(len(dets) < 1) : continue
 
             left_centers, left_coeffs, right_centers, right_coeffs, suggested_inset = detect_walls(br)
-            interface_centers, interface_coeffs = detect_interface(br, left_coeffs, right_coeffs, "bright", suggested_inset)
+            interface_centers, interface_coeffs = detect_interface(br, left_coeffs, right_coeffs, suggested_inset)
 
             detections[fi] = FrameDetections(cells = dets, left_centers = left_centers, left_coeffs = left_coeffs, right_centers = right_centers, right_coeffs = right_coeffs, wall_inset = suggested_inset, interface_centers = interface_centers, interface_coeffs = interface_coeffs, is_valid = True)
 
