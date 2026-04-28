@@ -26,6 +26,8 @@ class FrameDetections:
     right_coeffs:       np.ndarray   #coeffs
     right_centers:      np.ndarray   #raw points
 
+    wall_inset:         int
+
     interface_coeffs:   np.ndarray   #coeffs
     interface_centers:  np.ndarray   #raw points
 
@@ -41,16 +43,24 @@ def visualize(experiment_dir_str: str, br_frame: str, frame_det: FrameDetections
     fig, ax = plt.subplots(figsize=(8, 10))
     ax.imshow(img)
 
-    # walls and interface
+    # inset wall coeffs (shifted inward by frame_det.wall_inset)
+    left_in  = frame_det.left_coeffs.copy()
+    right_in = frame_det.right_coeffs.copy()
+    left_in[-1]  += frame_det.wall_inset
+    right_in[-1] -= frame_det.wall_inset
+
+    # walls, inset walls, and interface
     for coeffs, color in [
-        (frame_det.left_coeffs,  'lime'),
-        (frame_det.right_coeffs, 'red'),
-        (frame_det.interface_coeffs,  'cyan')
+        (frame_det.left_coeffs,      'lime'),
+        (frame_det.right_coeffs,     'red'),
+        (left_in,                    'yellow'),
+        (right_in,                   'yellow'),
+        (frame_det.interface_coeffs, 'cyan'),
     ]:
         if coeffs is None:
             continue
-        xs = [np.polyval(coeffs, y) for y in range(h)]
-        ys = list(range(h))
+        ys = np.arange(h)
+        xs = np.polyval(coeffs, ys)
         ax.plot(xs, ys, color=color, linewidth=1)
 
     # cells
@@ -74,7 +84,7 @@ def count_cells_per_region(cells: list, interface_coeffs: np.ndarray) -> dict:
             counts["right"] += 1
     return counts
 
-#reads input frame pairs (brightfield, fluorescent) and outputs them as a dictionary
+#reads input frame pairs (brightfield, fluorescent, mixed) and outputs them as a dictionary
 def load_frames(experiment_dir: str) -> Dict[int, tuple[str, str]]:
     br_dir = os.path.join(experiment_dir, "brightfield")
     fl_dir = os.path.join(experiment_dir, "fluorescent")
@@ -128,7 +138,7 @@ def main() :
     runner = IlastikRunner(ilastik_model, ilastik_exe=ilastik_exe)
     n_channels = 3 #BGR from OpenCV
 
-    #
+    print(f"[cytoscan] experiment: {os.path.basename(experiment_dir_str)}, ilastik_model: {os.path.basename(ilastik_model)}")
 
     #--- STEP 1 ---
     #gather all tif frames to analyze in experiment
@@ -145,8 +155,8 @@ def main() :
         #run only on fluorescent frames
         fl_frames = [fl for _, fl, _ in frames.values()]
         runner.run_on_frames(fl_frames, tmp_dir, n_channels)
-        print("[ilastik_runner] ilastik done")
 
+        print(f"[channel_detector] detecting channel walls and interface on {len(frames)} frame(s)...")
         #--- STEP 3 ---
         #load probability maps from disk
         for fi, (br, fl, mx) in frames.items() :
@@ -167,7 +177,7 @@ def main() :
             left_centers, left_coeffs, right_centers, right_coeffs, suggested_inset = detect_walls(br)
             interface_centers, interface_coeffs = detect_interface(br, left_coeffs, right_coeffs, "bright", suggested_inset)
 
-            detections[fi] = FrameDetections(cells = dets, left_centers = left_centers, left_coeffs = left_coeffs, right_centers = right_centers, right_coeffs = right_coeffs, interface_centers = interface_centers, interface_coeffs = interface_coeffs, is_valid = True)
+            detections[fi] = FrameDetections(cells = dets, left_centers = left_centers, left_coeffs = left_coeffs, right_centers = right_centers, right_coeffs = right_coeffs, wall_inset = suggested_inset, interface_centers = interface_centers, interface_coeffs = interface_coeffs, is_valid = True)
 
     print("[cytoscan] REPORT:")
 

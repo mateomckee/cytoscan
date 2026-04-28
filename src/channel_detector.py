@@ -4,9 +4,11 @@ from scipy.signal import medfilt
 
 DEG = 3
 
+BASE_INSET = 15
+
 def _load_right_half(path):
     img = cv2.imread(path)
-    x_offset = img.shape[1] // 2
+    x_offset = int(img.shape[1] * 0.4)
     gray = cv2.cvtColor(img[:, x_offset:], cv2.COLOR_BGR2GRAY)
     return gray, x_offset
 
@@ -48,7 +50,7 @@ def detect_walls(br_frame: str):
     left_centers,  left_coeffs,  left_hw  = fit(left_c)
     right_centers, right_coeffs, right_hw = fit(right_c)
 
-    suggested_inset = int(np.percentile(np.concatenate([left_hw, right_hw]), 95)) + 5
+    suggested_inset = int(np.percentile(np.concatenate([left_hw, right_hw]), 95)) + BASE_INSET
 
     #shift back to full-image coordinates
     left_coeffs  = _uncrop_coeffs(left_coeffs,  x_offset)
@@ -59,7 +61,7 @@ def detect_walls(br_frame: str):
     return left_centers, left_coeffs, right_centers, right_coeffs, suggested_inset
 
 
-def detect_interface(br_frame: str, left_coeffs: np.ndarray, right_coeffs: np.ndarray, polarity: str = 'bright', inset: int = 5):
+def detect_interface(br_frame: str, left_coeffs: np.ndarray, right_coeffs: np.ndarray, polarity: str = 'bright', inset: int = BASE_INSET):
     gray, x_offset = _load_right_half(br_frame)
     h, w = gray.shape
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
