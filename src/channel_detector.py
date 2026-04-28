@@ -2,7 +2,8 @@ import cv2
 import numpy as np
 from scipy.signal import medfilt
 
-DEG = 3
+WALL_DEG = 2
+INTERFACE_DEG = 4
 
 BASE_INSET = 15
 
@@ -44,7 +45,7 @@ def detect_walls(br_frame: str):
         rows = np.unique(ys)
         centers     = np.array([(y, xs[ys == y].mean()) for y in rows])
         half_widths = np.array([(xs[ys == y].max() - xs[ys == y].min()) / 2 for y in rows])
-        coeffs = np.polyfit(centers[:, 0], centers[:, 1], DEG)
+        coeffs = np.polyfit(centers[:, 0], centers[:, 1], WALL_DEG)
         return centers, coeffs, half_widths
 
     left_centers,  left_coeffs,  left_hw  = fit(left_c)
@@ -84,7 +85,7 @@ def detect_interface(br_frame: str, left_coeffs: np.ndarray, right_coeffs: np.nd
 
     keep = np.ones(len(points), dtype=bool)
     for _ in range(5):
-        coeffs = np.polyfit(points[keep, 0], points[keep, 1], DEG)
+        coeffs = np.polyfit(points[keep, 0], points[keep, 1], INTERFACE_DEG)
         res = points[:, 1] - np.polyval(coeffs, points[:, 0])
         mad = np.median(np.abs(res - np.median(res))) + 1e-9
         new_keep = np.abs(res) < 3 * 1.4826 * mad
