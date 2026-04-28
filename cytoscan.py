@@ -69,6 +69,9 @@ def visualize(experiment_dir_str: str, br_frame: str, frame_det: FrameDetections
         ax.text(d.centroid_x + 5, d.centroid_y, f"({d.centroid_x:.0f}, {d.centroid_y:.0f})",
                 color='cyan', fontsize=5)
 
+    ax.set_xlim(0, w)
+    ax.set_ylim(h, 0)
+    ax.axis('off')
     basename = os.path.splitext(os.path.basename(br_frame))[0]
     ax.axis('off')
     plt.tight_layout()
@@ -185,7 +188,7 @@ def main() :
     for fi, (br, fl, mx) in frames.items() :
         #skip zero-det frames
         if(fi not in detections) :
-            printf(f"{os.path.basename(max)}: no detections")
+            print(f"{os.path.basename(mx)}: no detections")
             continue
         
         frame_dets = detections[fi]
