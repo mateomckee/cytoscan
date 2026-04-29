@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cytoscan"
+version = "0.1.0"
+description = "Cell migration analysis for microfluidic channels"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "opencv-python",
+    "pyyaml",
+    "pydantic",
+    "matplotlib",
+    "scipy",
+]
+
+[project.scripts]
+cytoscan = "cytoscan.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

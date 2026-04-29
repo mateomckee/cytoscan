@@ -6,7 +6,6 @@ import h5py
 from pathlib import Path
 
 class IlastikRunner :
-
     def __init__(self, ilastik_model: str, ilastik_exe: str) :
         self._ilastik_model = str(Path(ilastik_model).resolve())
         self._ilastik_exe = ilastik_exe
@@ -71,5 +70,4 @@ class IlastikRunner :
                 f"ilastik headless failed (exit {process.returncode}):\n"
                 + stderr.decode(errors="replace")
             )
-
 

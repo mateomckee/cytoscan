@@ -1,0 +1,23 @@
+experiment: "experiments/3000rpm_1min_Pre"
+ilastik_model: "models/cells.ilp"
+ilastik_exe: "/Applications/ilastik-1.4.1.post1-arm64-OSX.app/Contents/ilastik-release/run_ilastik.sh"
+
+output:
+  export_visuals:
+    enabled: "true"
+    clear_existing: "true"        # complete output dir wipe on each run
+    overwrite_existing: "true"     # overwrite existing output files with same name
+    exported_frame : "brightfield"       # "brightfield" | "fluorescent" | "mixed"
+
+    #toggles specific visuals
+    cells: "true"
+    channel_walls: "true"
+    channel_walls_inset: "true"
+    channel_interface: "true"
+    roi: "true" #TODO
+    
+  export_report:
+    enabled: "true" #TODO
+
+
+      

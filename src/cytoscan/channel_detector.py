@@ -5,20 +5,18 @@ from scipy.signal import medfilt
 WALL_DEG = 2
 INTERFACE_DEG = 4
 
-BASE_INSET = 15
+BASE_INSET = 10
 
 def _load_right_half(path):
     img = cv2.imread(path)
-    x_offset = int(img.shape[1] * 0.4)
+    x_offset = int(img.shape[1] * 0.5)
     gray = cv2.cvtColor(img[:, x_offset:], cv2.COLOR_BGR2GRAY)
     return gray, x_offset
-
 
 def _uncrop_coeffs(coeffs, x_offset):
     out = coeffs.copy()
     out[-1] += x_offset
     return out
-
 
 def detect_walls(br_frame: str):
     gray, x_offset = _load_right_half(br_frame)
@@ -29,10 +27,8 @@ def detect_walls(br_frame: str):
     mag = cv2.magnitude(gx, gy)
 
     thresh = (mag > np.percentile(mag, 92)).astype(np.uint8) * 255
-    closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE,
-                              cv2.getStructuringElement(cv2.MORPH_RECT, (15, 1)))
-    closed = cv2.morphologyEx(closed, cv2.MORPH_CLOSE,
-                              cv2.getStructuringElement(cv2.MORPH_RECT, (1, 25)))
+    closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (15, 1)))
+    closed = cv2.morphologyEx(closed, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (1, 25)))
 
     contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     contours = sorted(contours, key=cv2.contourArea, reverse=True)[:2]
