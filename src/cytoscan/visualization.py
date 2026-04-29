@@ -21,8 +21,9 @@ def _unique_path(path: Path) -> Path:
 def export_visuals(ev_cfg: ExportVisualsConfig, experiment_dir: Path, detections: Dict[int, FrameDetections]) -> None:
     if not ev_cfg.enabled: return
 
-    #clear existing?
     output_dir = experiment_dir / "Output"
+
+    #clear existing?
     if ev_cfg.clear_existing and output_dir.exists(): shutil.rmtree(output_dir)
     
     output_dir.mkdir(parents=True, exist_ok=True)

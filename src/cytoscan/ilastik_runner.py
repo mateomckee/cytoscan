@@ -1,5 +1,4 @@
 import subprocess
-import threading
 import os
 import numpy as np
 import h5py
@@ -41,7 +40,6 @@ class IlastikRunner :
             raise ValueError(f"expected 3D probability map (H, W, classes), got shape {data.shape} instead")
         
         #cell probability channel
-        #perform a flip to fix coordinate system mismatch from ilastik
         return data[:, :, 0]
 
 
