@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Callable, Optional
 import numpy as np
 from pathlib import Path
 
@@ -16,8 +17,8 @@ class FrameDetections:
 
     wall_inset:         int
 
-    interface_coeffs:   np.ndarray   #coeffs
-    interface_centers:  np.ndarray   #raw points
+    interface_curve:    Optional[Callable[[np.ndarray], np.ndarray]]
+    interface_points:   np.ndarray   
 
     cells:              list         #list of Detection
     is_valid:           bool         #interface stability flag

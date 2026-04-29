@@ -1,4 +1,4 @@
-experiment: "experiments/3000rpm_1min_Pax"
+experiment: "experiments/3000rpm_1min_Pre"
 ilastik_model: "models/cells.ilp"
 ilastik_exe: "/Applications/ilastik-1.4.1.post1-arm64-OSX.app/Contents/ilastik-release/run_ilastik.sh"
 

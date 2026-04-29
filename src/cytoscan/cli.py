@@ -85,10 +85,10 @@ def main() :
             dets = detect_cells(cur_prob)
 
             left_centers, left_coeffs, right_centers, right_coeffs, suggested_inset = detect_walls(br)
-            interface_centers, interface_coeffs = detect_interface(br, left_coeffs, right_coeffs, suggested_inset)
+            interface_points, interface_curve = detect_interface(br, left_coeffs, right_coeffs, suggested_inset)
 
             #store detections for this frame
-            detections[fi] = FrameDetections(br = br, fl = fl, mx = mx, cells = dets, left_centers = left_centers, left_coeffs = left_coeffs, right_centers = right_centers, right_coeffs = right_coeffs, wall_inset = suggested_inset, interface_centers = interface_centers, interface_coeffs = interface_coeffs, is_valid = True)
+            detections[fi] = FrameDetections(br = br, fl = fl, mx = mx, cells = dets, left_centers = left_centers, left_coeffs = left_coeffs, right_centers = right_centers, right_coeffs = right_coeffs, wall_inset = suggested_inset, interface_points = interface_points, interface_curve = interface_curve, is_valid = True)
 
     # Stage 2: each is a one-shot pass over results
     export_visuals(cfg.output.export_visuals, cfg.experiment, detections)

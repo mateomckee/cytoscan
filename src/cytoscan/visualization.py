@@ -8,6 +8,13 @@ import numpy as np
 from cytoscan.config import ExportVisualsConfig
 from cytoscan.detections import FrameDetections
 
+def _as_callable(coeffs_or_curve):
+    if coeffs_or_curve is None:
+        return None
+    if callable(coeffs_or_curve):
+        return coeffs_or_curve
+    return lambda y: np.polyval(coeffs_or_curve, y)
+
 #return `path` if free, otherwise append _1, _2, ... until a free name is found
 def _unique_path(path: Path) -> Path:
     if not path.exists():
@@ -53,12 +60,13 @@ def _export_frame(ev_cfg: ExportVisualsConfig, output_dir: Path, fd: FrameDetect
         (fd.right_coeffs,     'red',    ev_cfg.channel_walls),
         (left_in,             'yellow', ev_cfg.channel_walls_inset),
         (right_in,            'yellow', ev_cfg.channel_walls_inset),
-        (fd.interface_coeffs, 'cyan',   ev_cfg.channel_interface),
+        (fd.interface_curve,  'cyan',   ev_cfg.channel_interface),
     ]
-    for coeffs, color, on in candidates:
-        if not on or coeffs is None:
+    for curve_or_coeffs, color, on in candidates:
+        f = _as_callable(curve_or_coeffs)
+        if not on or f is None:
             continue
-        ax.plot(np.polyval(coeffs, ys), ys, color=color, linewidth=1)
+        ax.plot(f(ys), ys, color=color, linewidth=1)
 
     if ev_cfg.cells:
         for d in fd.cells:
