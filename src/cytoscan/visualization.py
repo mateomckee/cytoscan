@@ -36,7 +36,11 @@ def export_visuals(ev_cfg: ExportVisualsConfig, experiment_dir: Path, detections
     output_dir.mkdir(parents=True, exist_ok=True)
 
     for fi, fd in detections.items():
+        print(f"\r[cytoscan] exporting visuals for frame {fi+1}/{len(detections)}", end="", flush=True)
         _export_frame(ev_cfg, output_dir, fd)
+    print(" done.")
+
+    print(f"[cytoscan] export complete at {output_dir}")
 
 def _export_frame(ev_cfg: ExportVisualsConfig, output_dir: Path, fd: FrameDetections) -> None:
     exported_frame = {

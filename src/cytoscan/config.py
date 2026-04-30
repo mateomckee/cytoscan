@@ -24,11 +24,20 @@ class OutputConfig(BaseModel) :
     export_visuals: ExportVisualsConfig = Field(default_factory=ExportVisualsConfig)
     export_report: ExportReportConfig = Field(default_factory=ExportReportConfig)
 
+class DetectionConfig(BaseModel) :
+    channel_wall_base_inset: int = 10
+    channel_wall_max_inset_fraction: float = 0.175
+    channel_wall_degree: int = 2
+
+    channel_interface_smoothing_factor: float = 32.0
+
 class Config(BaseModel):
     #required, has no default
     ilastik_exe: Path
     ilastik_model: Path
     experiment: Path
+
+    detection: DetectionConfig = Field(default_factory=DetectionConfig)
 
     #optional groups, has a default
     output: OutputConfig = Field(default_factory=OutputConfig)

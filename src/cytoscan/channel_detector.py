@@ -3,14 +3,7 @@ import numpy as np
 from scipy.signal import medfilt
 from scipy.interpolate import UnivariateSpline
 
-MAX_INSET_FRACTION = 0.175
-
-WALL_DEG = 2
-INTERFACE_DEG = 4
-
-BASE_INSET = 10
-
-INTERFACE_SMOOTHING_FACTOR = 32.0 
+from cytoscan.config import DetectionConfig 
 
 def _load_right_half(path):
     img = cv2.imread(path)
@@ -23,7 +16,7 @@ def _uncrop_coeffs(coeffs, x_offset):
     out[-1] += x_offset
     return out
 
-def detect_walls(br_frame: str):
+def detect_walls(d_cfg: DetectionConfig, br_frame: str):
     gray, x_offset = _load_right_half(br_frame)
     h = gray.shape[0]
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -33,10 +26,8 @@ def detect_walls(br_frame: str):
     mag = cv2.magnitude(gx, gy)
 
     thresh = (mag > np.percentile(mag, 92)).astype(np.uint8) * 255
-    closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE,
-                              cv2.getStructuringElement(cv2.MORPH_RECT, (15, 1)))
-    closed = cv2.morphologyEx(closed, cv2.MORPH_CLOSE,
-                              cv2.getStructuringElement(cv2.MORPH_RECT, (1, 25)))
+    closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (15, 1)))
+    closed = cv2.morphologyEx(closed, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (1, 25)))
 
     contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     contours = sorted(contours, key=cv2.contourArea, reverse=True)[:2]
@@ -49,17 +40,17 @@ def detect_walls(br_frame: str):
         rows = np.unique(ys)
         centers     = np.array([(y, xs[ys == y].mean()) for y in rows])
         half_widths = np.array([(xs[ys == y].max() - xs[ys == y].min()) / 2 for y in rows])
-        coeffs = np.polyfit(centers[:, 0], centers[:, 1], WALL_DEG)
+        coeffs = np.polyfit(centers[:, 0], centers[:, 1], d_cfg.channel_wall_degree)
         return centers, coeffs, half_widths
 
     left_centers,  left_coeffs,  left_hw  = fit(left_c)
     right_centers, right_coeffs, right_hw = fit(right_c)
 
     # cap inset to a fraction of channel width
-    suggested_inset = int(np.percentile(np.concatenate([left_hw, right_hw]), 95)) + BASE_INSET
+    suggested_inset = int(np.percentile(np.concatenate([left_hw, right_hw]), 95)) + d_cfg.channel_wall_base_inset
     sample_ys = np.linspace(0, h - 1, 20).astype(int)
     widths = np.polyval(right_coeffs, sample_ys) - np.polyval(left_coeffs, sample_ys)
-    max_inset = int(np.median(widths) * MAX_INSET_FRACTION)
+    max_inset = int(np.median(widths) * d_cfg.channel_wall_max_inset_fraction)
     suggested_inset = min(suggested_inset, max_inset)
 
     # shift back to full-image coordinates
@@ -70,7 +61,7 @@ def detect_walls(br_frame: str):
 
     return left_centers, left_coeffs, right_centers, right_coeffs, suggested_inset
 
-def detect_interface(br_frame: str, left_coeffs: np.ndarray, right_coeffs: np.ndarray, inset: int = 5):
+def detect_interface(d_cfg: DetectionConfig, br_frame: str, left_coeffs: np.ndarray, right_coeffs: np.ndarray, inset: int):
     gray, x_offset = _load_right_half(br_frame)
     h, w = gray.shape
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -91,7 +82,7 @@ def detect_interface(br_frame: str, left_coeffs: np.ndarray, right_coeffs: np.nd
     points[:, 1] = medfilt(points[:, 1], kernel_size=31)
 
     # robust spline fit
-    s = len(points) * INTERFACE_SMOOTHING_FACTOR
+    s = len(points) * d_cfg.channel_interface_smoothing_factor
     keep = np.ones(len(points), dtype=bool)
     spline = None
     for _ in range(5):

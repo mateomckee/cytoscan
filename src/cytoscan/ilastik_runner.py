@@ -3,6 +3,8 @@ import os
 import numpy as np
 import h5py
 from pathlib import Path
+import itertools
+import time
 
 class IlastikRunner :
     def __init__(self, ilastik_model: str, ilastik_exe: str) :
@@ -44,11 +46,13 @@ class IlastikRunner :
 
 
     def run_on_frames(self, input_paths: list, output_dir: str, n_channels: int = 3) :
+        msg = f"[cytoscan] running ilastik on {len(input_paths)} frame(s)"
+
         axes = "yxc" if n_channels > 1 else "yx"
-        self._run_headless(input_paths, output_dir, axes)
+        self._run_headless(input_paths, output_dir, axes, msg)
 
     #internal method, run and handle new process
-    def _run_headless(self, input_paths: list, output_dir: str, axes: str) :
+    def _run_headless(self, input_paths: list, output_dir: str, axes: str, progress_message: str = None) :
         cmd = [
             self._ilastik_exe,
             "--headless",
@@ -61,6 +65,10 @@ class IlastikRunner :
 
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
+        #optional progress message
+        if progress_message:
+            self._animate_until_done(process, progress_message)
+
         _, stderr = process.communicate()
 
         if process.returncode != 0 :
@@ -68,4 +76,14 @@ class IlastikRunner :
                 f"ilastik headless failed (exit {process.returncode}):\n"
                 + stderr.decode(errors="replace")
             )
+
+    def _animate_until_done(self, process: subprocess.Popen, message: str):
+        for dots in itertools.cycle([".", "..", "...", ""]):
+            if process.poll() is not None:
+                break
+            print(f"\r{message} {dots}   ", end="", flush=True)
+            time.sleep(0.75)
+        print(f"\r{message} done.")
+
+
 
