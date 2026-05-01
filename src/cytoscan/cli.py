@@ -15,8 +15,9 @@ from cytoscan.detections import FrameDetections
 from cytoscan.ilastik_runner import IlastikRunner
 from cytoscan.cell_detector import detect_cells
 from cytoscan.channel_detector import detect_walls, detect_interface
-from cytoscan.analysis import count_cells_per_region
-from cytoscan.visualization import export_visuals
+from cytoscan.flagging import compute_flags_all, print_flags
+from cytoscan.analysis import analyze
+from cytoscan.export import export_visuals, export_data, export_all
 
 def parse_args() :
     parser = argparse.ArgumentParser(description="Offline microscopy perception tool for cell tracking in Sun Lab experiments")
@@ -47,26 +48,18 @@ def load_frames(experiment_dir: str) -> Dict[int, tuple[Path, Path, Path]]:
 
     return {i: (br, fl, mx) for i, (br, fl, mx) in enumerate(zip(br_files, fl_files, mx_files))}
 
-def main() :
-    args = parse_args()
-    cfg = Config.load(args.c)
-
-    runner = IlastikRunner(cfg.ilastik_model, cfg.ilastik_exe)
-    n_channels = 3 #BGR from OpenCV
-
-    print(f"[cytoscan] config: {Path(args.c).name}, experiment: {os.path.basename(cfg.experiment)}, ilastik_model: {os.path.basename(cfg.ilastik_model)}")
-
-    #key data structures for this program
-    frames: Dict[int, (Path, Path, Path)] = load_frames(cfg.experiment) 
+def run_detections(cfg: Config, frames: Dict[int, tuple[Path, Path, Path]]) -> Dict[int, FrameDetections]:
     detections: Dict[int, FrameDetections] = {}
 
-    # Stage 1: the expensive loop, performs all detections (cell + channel)
+    runner = IlastikRunner(cfg.ilastik.model, cfg.ilastik.exe)
+    n_channels = 3 #BGR from OpenCV
+
     with tempfile.TemporaryDirectory() as tmp_dir :
         fl_frames = [fl for _, fl, _ in frames.values()]
         runner.run_on_frames(fl_frames, tmp_dir, n_channels)
 
         for fi, (br, fl, mx) in frames.items() :
-            print(f"\r[cytoscan] running detections on frame {fi+1}/{len(frames)}", end="", flush=True)
+            print(f"\r[cytoscan] running channel detections: frame {fi+1}/{len(frames)}", end="", flush=True)
 
             #get the name of the ilastik output file, which is the original filename + _Probabilities.h5, within the temp_dir
             base = os.path.splitext(os.path.basename(fl))[0]
@@ -82,10 +75,32 @@ def main() :
             interface_points, interface_curve = detect_interface(cfg.detection, br, left_coeffs, right_coeffs, suggested_inset)
 
             #store detections for this frame
-            detections[fi] = FrameDetections(br = br, fl = fl, mx = mx, cells = dets, left_centers = left_centers, left_coeffs = left_coeffs, right_centers = right_centers, right_coeffs = right_coeffs, wall_inset = suggested_inset, interface_points = interface_points, interface_curve = interface_curve, is_valid = True)
-        print(" done.")
+            detections[fi] = FrameDetections(br = br, fl = fl, mx = mx, cells = dets, left_centers = left_centers, left_coeffs = left_coeffs, right_centers = right_centers, right_coeffs = right_coeffs, wall_inset = suggested_inset, interface_points = interface_points, interface_curve = interface_curve, flags = None)
+            
+            fd = detections[fi]
 
-    # Stage 2: each is a one-shot pass over results
-    export_visuals(cfg.output.export_visuals, cfg.experiment, detections)
+        print(" done.")
+    return detections
+
+def main() :
+    args = parse_args()
+    cfg = Config.load(args.c)
+
+    print(f"[cytoscan] config: {Path(args.c).name}, experiment: {os.path.basename(cfg.experiment.dir)}, ilastik_model: {os.path.basename(cfg.ilastik.model)}")
+
+    frames = load_frames(cfg.experiment.dir) 
+
+    # stage 1: the expensive loop, performs all detections (cell + channel)
+    detections = run_detections(cfg, frames)
+
+    # stage 2: each is a one-shot pass over results
+    compute_flags_all(cfg.flagging, cfg.experiment, detections)
+
+    #DEBUG print flags
+    print_flags(detections)
+
+    findings = analyze(cfg.output.export_data, cfg.experiment.dir, detections)
+    export_all(cfg.output, cfg.experiment.dir, detections, findings)
     
     print("[cytoscan] completed successfully")
+

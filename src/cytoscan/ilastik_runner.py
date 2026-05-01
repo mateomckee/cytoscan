@@ -46,7 +46,7 @@ class IlastikRunner :
 
 
     def run_on_frames(self, input_paths: list, output_dir: str, n_channels: int = 3) :
-        msg = f"[cytoscan] running ilastik on {len(input_paths)} frame(s)"
+        msg = f"[cytoscan] running cell detections on ilastik. processing {len(input_paths)} frame(s)"
 
         axes = "yxc" if n_channels > 1 else "yx"
         self._run_headless(input_paths, output_dir, axes, msg)

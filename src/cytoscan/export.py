@@ -5,15 +5,9 @@ from typing import Dict
 import matplotlib.pyplot as plt
 import numpy as np
 
-from cytoscan.config import ExportVisualsConfig
+from cytoscan.config import OutputConfig, ExportVisualsConfig, ExportDataConfig
 from cytoscan.detections import FrameDetections
-
-def _as_callable(coeffs_or_curve):
-    if coeffs_or_curve is None:
-        return None
-    if callable(coeffs_or_curve):
-        return coeffs_or_curve
-    return lambda y: np.polyval(coeffs_or_curve, y)
+from cytoscan.findings import ExperimentFindings
 
 #return `path` if free, otherwise append _1, _2, ... until a free name is found
 def _unique_path(path: Path) -> Path:
@@ -25,22 +19,12 @@ def _unique_path(path: Path) -> Path:
         i += 1
     return candidate
 
-def export_visuals(ev_cfg: ExportVisualsConfig, experiment_dir: Path, detections: Dict[int, FrameDetections]) -> None:
-    if not ev_cfg.enabled: return
-
-    output_dir = experiment_dir / "Output"
-
-    #clear existing?
-    if ev_cfg.clear_existing and output_dir.exists(): shutil.rmtree(output_dir)
-    
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    for fi, fd in detections.items():
-        print(f"\r[cytoscan] exporting visuals for frame {fi+1}/{len(detections)}", end="", flush=True)
-        _export_frame(ev_cfg, output_dir, fd)
-    print(" done.")
-
-    print(f"[cytoscan] export complete at {output_dir}")
+def _as_callable(coeffs_or_curve):
+    if coeffs_or_curve is None:
+        return None
+    if callable(coeffs_or_curve):
+        return coeffs_or_curve
+    return lambda y: np.polyval(coeffs_or_curve, y)
 
 def _export_frame(ev_cfg: ExportVisualsConfig, output_dir: Path, fd: FrameDetections) -> None:
     exported_frame = {
@@ -80,6 +64,20 @@ def _export_frame(ev_cfg: ExportVisualsConfig, output_dir: Path, fd: FrameDetect
                     f"({d.centroid_x:.0f}, {d.centroid_y:.0f})",
                     color='cyan', fontsize=5)
 
+    # validity badge
+    if fd.flags is not None:
+        f = fd.flags
+        lines = [
+            "VALID" if f.frame_valid else "INVALID",
+            f"wall:      {'✓' if f.walls_valid else '✗'}",
+            f"interface: {'✓' if f.interface_valid else '✗'}",
+            f"width:     {'✓' if f.channel_width_valid else '✗'}",
+        ]
+        ax.text(10, 30, "\n".join(lines),
+                color='white', fontsize=10, fontfamily='monospace',
+                verticalalignment='top',
+                bbox=dict(facecolor='black', alpha=0.6, pad=4, edgecolor='none'))
+
     ax.set_xlim(0, w)
     ax.set_ylim(h, 0)
     ax.axis('off')
@@ -91,4 +89,30 @@ def _export_frame(ev_cfg: ExportVisualsConfig, output_dir: Path, fd: FrameDetect
         out_path = _unique_path(out_path)
     plt.savefig(out_path, dpi=150)
     plt.close(fig)
+
+""" public methods """
+def export_visuals(ev_cfg: ExportVisualsConfig, experiment_dir: Path, detections: ExperimentFindings) -> None:
+    if not ev_cfg.enabled: return
+
+    output_dir = experiment_dir / "Output"
+
+    #clear existing?
+    if ev_cfg.clear_existing and output_dir.exists(): shutil.rmtree(output_dir)
+    
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    for fi, fd in detections.items():
+        print(f"\r[cytoscan] exporting visuals: frame {fi+1}/{len(detections)}", end="", flush=True)
+        _export_frame(ev_cfg, output_dir, fd)
+    print(f" done. (exported to {output_dir})")
+
+def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: ExperimentFindings) -> None :
+    print("[cytoscan] exporting analysis data to csv files")
+    return
+
+def export_all(output_cfg: OutputConfig, experiment_dir: Path, detections: FrameDetections, findings: ExperimentFindings) -> None :
+    if output_cfg.export_visuals.enabled :
+        export_visuals(output_cfg.export_visuals, experiment_dir, detections)
+    if output_cfg.export_data.enabled :
+        export_data(output_cfg.export_data, experiment_dir, findings)
 

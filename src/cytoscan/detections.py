@@ -4,6 +4,28 @@ import numpy as np
 from pathlib import Path
 
 @dataclass
+class FrameFlags:
+    # walls
+    left_spans_full:        bool
+    right_spans_full:       bool
+
+    # channel width
+    mean_channel_width_um:  float
+    channel_width_valid:    bool
+
+    # interface
+    interface_curve_amplitude: float
+    interface_valid:        bool
+
+    @property
+    def walls_valid(self) -> bool:
+        return self.left_spans_full and self.right_spans_full
+
+    @property
+    def frame_valid(self) -> bool:
+        return self.walls_valid and self.channel_width_valid and self.interface_valid
+
+@dataclass
 class FrameDetections:
     br:                 Path
     fl:                 Path
@@ -21,7 +43,8 @@ class FrameDetections:
     interface_points:   np.ndarray   
 
     cells:              list         #list of Detection
-    is_valid:           bool         #interface stability flag
+    
+    flags:              Optional[FrameFlags]
 
 @dataclass
 class CellDetection :

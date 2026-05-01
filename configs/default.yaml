@@ -1,14 +1,11 @@
-experiment: "experiments/3000rpm_1min_Pax"
-ilastik_model: "models/cells.ilp"
-ilastik_exe: "/Applications/ilastik-1.4.1.post1-arm64-OSX.app/Contents/ilastik-release/run_ilastik.sh"
+#
+ilastik:
+  model: "models/cells.ilp"
+  exe: "/Applications/ilastik-1.4.1.post1-arm64-OSX.app/Contents/ilastik-release/run_ilastik.sh"
 
-detection:
-  channel_wall_degree: 2
-  channel_interface_smoothing_factor: 32.0
-
-  channel_wall_base_inset: 10
-  channel_wall_max_inset_fraction: 0.175
-
+experiment:
+  dir: "experiments/3000rpm_1min_Pre"
+  pixel_size_um: 2.6
 output:
   export_visuals:
     enabled: "true"
@@ -23,8 +20,18 @@ output:
     channel_interface: "true"
     roi: "true" #TODO
     
-  export_report:
-    enabled: "true" #TODO
+  export_data:
+    enabled: "true" 
 
+#developer flags      
+detection:
+  channel_wall_degree: 2
+  channel_interface_smoothing_factor: 100.0
 
-      
+  channel_wall_base_inset: 10
+  channel_wall_max_inset_fraction: 0.175
+
+flagging:
+  interface_curve_amplitude_max: 30.0
+  expected_channel_width_um: 600.0
+  channel_width_tolerance: 0.20

@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-from scipy.signal import medfilt
 from scipy.interpolate import UnivariateSpline
 
 from cytoscan.config import DetectionConfig 
@@ -74,20 +73,20 @@ def detect_interface(d_cfg: DetectionConfig, br_frame: str, left_coeffs: np.ndar
     for y in range(h):
         xl = max(0, int(np.polyval(left_in,  y)))
         xr = min(w, int(np.polyval(right_in, y)))
-        if xr - xl < 3:
+        if xr - xl < 30:
             continue
         x_best = xl + int(np.argmax(grad[y, xl:xr]))
         points.append((y, x_best))
     points = np.array(points, dtype=np.float64)
-    points[:, 1] = medfilt(points[:, 1], kernel_size=31)
 
-    # robust spline fit
-    s = len(points) * d_cfg.channel_interface_smoothing_factor
+    #robust spline fit
+    factor = d_cfg.channel_interface_smoothing_factor
     keep = np.ones(len(points), dtype=bool)
     spline = None
     for _ in range(5):
         if keep.sum() < 10:
             break
+        s = keep.sum() * factor
         spline = UnivariateSpline(points[keep, 0], points[keep, 1], k=3, s=s)
         res = points[:, 1] - spline(points[:, 0])
         mad = np.median(np.abs(res - np.median(res))) + 1e-9
@@ -96,8 +95,8 @@ def detect_interface(d_cfg: DetectionConfig, br_frame: str, left_coeffs: np.ndar
             break
         keep = new_keep
 
-    # shift points back to full-image coords
-    # (the spline is in crop space — wrap it to shift output)
+    #shift points back to full-image coords
+    #the spline is in crop space, wrap it to shift output
     points[:, 1] += x_offset
     interface_curve = _shifted_spline(spline, x_offset) if spline is not None else None
 

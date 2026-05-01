@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Literal
 from pydantic import BaseModel, Field, ValidationError
 
-class ExportReportConfig(BaseModel) :
+class ExportDataConfig(BaseModel) :
     enabled: bool = True
 
 class ExportVisualsConfig(BaseModel) :
@@ -22,7 +22,7 @@ class ExportVisualsConfig(BaseModel) :
 
 class OutputConfig(BaseModel) :
     export_visuals: ExportVisualsConfig = Field(default_factory=ExportVisualsConfig)
-    export_report: ExportReportConfig = Field(default_factory=ExportReportConfig)
+    export_data: ExportDataConfig = Field(default_factory=ExportDataConfig)
 
 class DetectionConfig(BaseModel) :
     channel_wall_base_inset: int = 10
@@ -31,13 +31,26 @@ class DetectionConfig(BaseModel) :
 
     channel_interface_smoothing_factor: float = 32.0
 
+class FlaggingConfig(BaseModel):
+    interface_curve_amplitude_max: float = 30.0   # max detrended max-min of the interface spline (px)
+    expected_channel_width_um: float = 600.0
+    channel_width_tolerance: float = 0.20
+
+class ExperimentConfig(BaseModel):
+    dir: Path
+    pixel_size_um: float
+
+class IlastikConfig(BaseModel):
+    model: Path
+    exe: Path
+
 class Config(BaseModel):
     #required, has no default
-    ilastik_exe: Path
-    ilastik_model: Path
-    experiment: Path
+    ilastik: IlastikConfig
+    experiment: ExperimentConfig
 
     detection: DetectionConfig = Field(default_factory=DetectionConfig)
+    flagging: FlaggingConfig = Field(default_factory=FlaggingConfig)
 
     #optional groups, has a default
     output: OutputConfig = Field(default_factory=OutputConfig)
@@ -69,10 +82,10 @@ class Config(BaseModel):
             ...
             etc
         """
-        if not self.ilastik_exe.exists() :
+        if not self.ilastik.exe.exists() :
             sys.exit(f"[cytoscan] ilastik_exe does not exist: {self.ilastik_exe}")
-        if not self.ilastik_model.exists() :
+        if not self.ilastik.model.exists() :
             sys.exit(f"[cytoscan] ilastik_model does not exist: {self.ilastik_model}")
-        if not self.experiment.is_dir() :
+        if not self.experiment.dir.is_dir() :
             sys.exit(f"[cytoscan] experiment is not a directory: {self.experiment}")
         
