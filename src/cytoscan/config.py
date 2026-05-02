@@ -39,6 +39,11 @@ class DetectionConfig(BaseModel) :
     interface_dp_jump_penalty: float = 1.0        # cost per pixel of column jump between adjacent rows in the DP
     interface_dp_max_jump_px: int = 3             # hard cap on per-row column jump in the DP
 
+class AnalysisConfig(BaseModel):
+    left_fluid:           Literal["peg", "dex"] = "peg"   # which fluid sits on the left of the interface
+    interface_band_um:    float = 50.0                    # |distance| ≤ this → category "int"
+    transition_band_um:   float = 150.0                   # interface_band_um < |distance| ≤ this → "int_peg" / "int_dex"
+
 class FlaggingConfig(BaseModel):
     wall_anchor_strength_min:      float = 2.5    # min ratio of profile_pos at wall-x to its image-wide median
     interface_signal_ratio_min:    float = 1.5    # min ratio of median ridge response along the spline path to the median in the inset strip
@@ -66,6 +71,7 @@ class Config(BaseModel):
     preprocessing: PreprocessConfig = Field(default_factory=PreprocessConfig)
     detection: DetectionConfig = Field(default_factory=DetectionConfig)
     flagging: FlaggingConfig = Field(default_factory=FlaggingConfig)
+    analysis: AnalysisConfig = Field(default_factory=AnalysisConfig)
 
     #optional groups, has a default
     output: OutputConfig = Field(default_factory=OutputConfig)

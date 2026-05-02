@@ -76,7 +76,7 @@ def main() :
     #DEBUG print flags
     #print_flags(detections)
 
-    findings = analyze(cfg.output.export_data, cfg.experiment.dir, detections)
+    findings = analyze(cfg.analysis, cfg.experiment, detections)
     export_all(cfg.output, cfg.experiment.dir, detections, findings)
     
     print("[cytoscan] completed successfully")
