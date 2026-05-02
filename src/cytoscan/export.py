@@ -1,3 +1,4 @@
+import csv
 import shutil
 from pathlib import Path
 from typing import Dict
@@ -94,7 +95,7 @@ def _export_frame(ev_cfg: ExportVisualsConfig, output_dir: Path, fd: FrameDetect
 def export_visuals(ev_cfg: ExportVisualsConfig, experiment_dir: Path, detections: ExperimentFindings) -> None:
     if not ev_cfg.enabled: return
 
-    output_dir = experiment_dir / "Output"
+    output_dir = experiment_dir / "output"
 
     #clear existing?
     if ev_cfg.clear_existing and output_dir.exists(): shutil.rmtree(output_dir)
@@ -106,9 +107,59 @@ def export_visuals(ev_cfg: ExportVisualsConfig, experiment_dir: Path, detections
         _export_frame(ev_cfg, output_dir, fd)
     print(f" done. (exported to {output_dir})")
 
-def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: ExperimentFindings) -> None :
-    print("[cytoscan] exporting analysis data to csv files")
-    return
+def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: ExperimentFindings) -> None:
+    if not ed_cfg.enabled:
+        return
+
+    output_dir = experiment_dir / "output"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    cells_path  = output_dir / "cells.csv"
+    frames_path = output_dir / "frames.csv"
+    summary_path = output_dir / "summary.txt"
+
+    with open(cells_path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow([
+            "frame_index", "label",
+            "centroid_x_px", "centroid_y_px", "area_px2",
+            "interface_x_at_y_px",
+            "distance_signed_um", "distance_abs_um",
+            "side", "category",
+        ])
+        for fi, ff in sorted(findings.frames.items()):
+            for c in ff.cells:
+                w.writerow([
+                    fi, c.label,
+                    f"{c.centroid_x:.2f}", f"{c.centroid_y:.2f}", c.area,
+                    f"{c.interface_x_at_y_px:.2f}",
+                    f"{c.distance_signed_um:.2f}", f"{c.distance_abs_um:.2f}",
+                    c.side, c.category,
+                ])
+
+    with open(frames_path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow([
+            "frame_index", "mean_channel_width_um",
+            "n_total_cells",
+            "n_peg", "n_int_peg", "n_int", "n_int_dex", "n_dex",
+        ])
+        for fi, ff in sorted(findings.frames.items()):
+            n_total = ff.n_peg + ff.n_int_peg + ff.n_int + ff.n_int_dex + ff.n_dex
+            w.writerow([
+                fi, f"{ff.mean_channel_width_um:.1f}",
+                n_total,
+                ff.n_peg, ff.n_int_peg, ff.n_int, ff.n_int_dex, ff.n_dex,
+            ])
+
+    with open(summary_path, "w") as f:
+        f.write(f"frames_total:   {findings.n_total_frames}\n")
+        f.write(f"frames_valid:   {len(findings.frames)}\n")
+        f.write(f"frames_invalid: {len(findings.invalid_frame_indices)}\n")
+        if findings.invalid_frame_indices:
+            f.write(f"invalid_frame_indices: {findings.invalid_frame_indices}\n")
+
+    print(f"[cytoscan] exported {cells_path.name}, {frames_path.name}, {summary_path.name} to {output_dir}")
 
 def export_all(output_cfg: OutputConfig, experiment_dir: Path, detections: FrameDetections, findings: ExperimentFindings) -> None :
     if output_cfg.export_visuals.enabled :
