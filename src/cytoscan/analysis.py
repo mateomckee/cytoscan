@@ -2,7 +2,7 @@ import numpy as np
 
 from cytoscan.config import AnalysisConfig, ExperimentConfig
 from cytoscan.detections import FrameDetections
-from cytoscan.findings import CellFindings, FrameFindings, ExperimentFindings, Side, Category
+from cytoscan.findings import CellFindings, FrameFindings, ExperimentFindings, InterfaceSample, Side, Category
 
 
 def analyze(an_cfg: AnalysisConfig, exp_cfg: ExperimentConfig, detections: dict[int, FrameDetections]) -> ExperimentFindings:
@@ -14,8 +14,9 @@ def analyze(an_cfg: AnalysisConfig, exp_cfg: ExperimentConfig, detections: dict[
     pixel_size_um = exp_cfg.pixel_size_um
     left_fluid:  Side = an_cfg.left_fluid
     right_fluid: Side = "dex" if left_fluid == "peg" else "peg"
-    interface_band_um  = an_cfg.interface_band_um
-    transition_band_um = an_cfg.transition_band_um
+    interface_band_um        = an_cfg.interface_band_um
+    transition_band_um       = an_cfg.transition_band_um
+    interface_sample_step_px = max(1, int(an_cfg.interface_sample_step_px))
 
     frames: dict[int, FrameFindings] = {}
     invalid_frame_indices: list[int] = []
@@ -30,6 +31,8 @@ def analyze(an_cfg: AnalysisConfig, exp_cfg: ExperimentConfig, detections: dict[
 
         spline = fd.interface_curve
         spline_deriv = spline.derivative() if hasattr(spline, "derivative") else None
+
+        image_h_half_px = fd.image_h_px / 2.0
 
         cell_findings: list[CellFindings] = []
         n_peg = n_int_peg = n_int = n_int_dex = n_dex = 0
@@ -46,16 +49,22 @@ def analyze(an_cfg: AnalysisConfig, exp_cfg: ExperimentConfig, detections: dict[
             side: Side = left_fluid if distance_signed_um < 0 else right_fluid
             category = _categorize(distance_abs_um, side, interface_band_um, transition_band_um)
 
+            channel_midpoint_x_px = (np.polyval(fd.left_coeffs, cy) + np.polyval(fd.right_coeffs, cy)) / 2.0
+            centroid_x_um_from_channel_center = (cx - channel_midpoint_x_px) * pixel_size_um
+            centroid_y_um_from_image_center   = (cy - image_h_half_px)       * pixel_size_um
+
             cell_findings.append(CellFindings(
-                centroid_x          = cx,
-                centroid_y          = cy,
-                area                = cell.area,
-                label               = cell.label,
-                interface_x_at_y_px = fy,
-                distance_signed_um  = distance_signed_um,
-                distance_abs_um     = distance_abs_um,
-                side                = side,
-                category            = category,
+                centroid_x                        = cx,
+                centroid_y                        = cy,
+                area                              = cell.area,
+                label                             = cell.label,
+                interface_x_at_y_px               = fy,
+                distance_signed_um                = distance_signed_um,
+                distance_abs_um                   = distance_abs_um,
+                side                              = side,
+                category                          = category,
+                centroid_x_um_from_channel_center = centroid_x_um_from_channel_center,
+                centroid_y_um_from_image_center   = centroid_y_um_from_image_center,
             ))
 
             if   category == "peg":     n_peg     += 1
@@ -64,15 +73,48 @@ def analyze(an_cfg: AnalysisConfig, exp_cfg: ExperimentConfig, detections: dict[
             elif category == "int_dex": n_int_dex += 1
             elif category == "dex":     n_dex     += 1
 
+        # ---- interface sampling (long format) + per-frame summary stats ----
+        ys_sample_px = np.arange(0, fd.image_h_px, interface_sample_step_px, dtype=np.float64)
+        xs_sample_px = spline(ys_sample_px)
+        slopes_sample = (spline_deriv(ys_sample_px)
+                         if spline_deriv is not None else np.zeros_like(ys_sample_px))
+        midpoints_px = (np.polyval(fd.left_coeffs,  ys_sample_px)
+                        + np.polyval(fd.right_coeffs, ys_sample_px)) / 2.0
+        xs_um_from_center = (xs_sample_px - midpoints_px) * pixel_size_um
+        ys_um_from_center = (ys_sample_px - image_h_half_px) * pixel_size_um
+
+        interface_samples = [
+            InterfaceSample(
+                y_px                       = float(ys_sample_px[i]),
+                x_px                       = float(xs_sample_px[i]),
+                y_um_from_image_center     = float(ys_um_from_center[i]),
+                x_um_from_channel_center   = float(xs_um_from_center[i]),
+                slope_dx_dy                = float(slopes_sample[i]),
+            )
+            for i in range(len(ys_sample_px))
+        ]
+
+        interface_mean_x_um    = float(np.mean(xs_um_from_center))
+        interface_std_x_um     = float(np.std(xs_um_from_center))
+        interface_amplitude_um = float(xs_um_from_center.max() - xs_um_from_center.min())
+        # linear fit of x_um vs y_um → slope as dimensionless dx/dy
+        slope_fit, _ = np.polyfit(ys_um_from_center, xs_um_from_center, 1)
+        interface_slope_dx_dy = float(slope_fit)
+
         frames[fi] = FrameFindings(
-            frame_index           = fi,
-            cells                 = cell_findings,
-            n_peg                 = n_peg,
-            n_int_peg             = n_int_peg,
-            n_int                 = n_int,
-            n_int_dex             = n_int_dex,
-            n_dex                 = n_dex,
-            mean_channel_width_um = fd.flags.mean_channel_width_um,
+            frame_index             = fi,
+            cells                   = cell_findings,
+            n_peg                   = n_peg,
+            n_int_peg               = n_int_peg,
+            n_int                   = n_int,
+            n_int_dex               = n_int_dex,
+            n_dex                   = n_dex,
+            mean_channel_width_um   = fd.flags.mean_channel_width_um,
+            interface_samples       = interface_samples,
+            interface_mean_x_um     = interface_mean_x_um,
+            interface_std_x_um      = interface_std_x_um,
+            interface_amplitude_um  = interface_amplitude_um,
+            interface_slope_dx_dy   = interface_slope_dx_dy,
         )
 
     print(f" done. ({len(frames)}/{n_total} valid)")

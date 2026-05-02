@@ -95,6 +95,8 @@ def _export_frame(ev_cfg: ExportVisualsConfig, output_dir: Path, fd: FrameDetect
 def export_visuals(ev_cfg: ExportVisualsConfig, experiment_dir: Path, detections: ExperimentFindings) -> None:
     if not ev_cfg.enabled: return
 
+    plt.style.use('dark_background')
+
     output_dir = experiment_dir / "output"
 
     #clear existing?
@@ -114,15 +116,17 @@ def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: Experi
     output_dir = experiment_dir / "output"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    cells_path  = output_dir / "cells.csv"
-    frames_path = output_dir / "frames.csv"
-    summary_path = output_dir / "summary.txt"
+    cells_path     = output_dir / "cells.csv"
+    frames_path    = output_dir / "frames.csv"
+    interface_path = output_dir / "interface.csv"
+    summary_path   = output_dir / "summary.txt"
 
     with open(cells_path, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow([
             "frame_index", "label",
             "centroid_x_px", "centroid_y_px", "area_px2",
+            "centroid_x_um_from_channel_center", "centroid_y_um_from_image_center",
             "interface_x_at_y_px",
             "distance_signed_um", "distance_abs_um",
             "side", "category",
@@ -132,6 +136,8 @@ def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: Experi
                 w.writerow([
                     fi, c.label,
                     f"{c.centroid_x:.2f}", f"{c.centroid_y:.2f}", c.area,
+                    f"{c.centroid_x_um_from_channel_center:.2f}",
+                    f"{c.centroid_y_um_from_image_center:.2f}",
                     f"{c.interface_x_at_y_px:.2f}",
                     f"{c.distance_signed_um:.2f}", f"{c.distance_abs_um:.2f}",
                     c.side, c.category,
@@ -143,6 +149,8 @@ def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: Experi
             "frame_index", "mean_channel_width_um",
             "n_total_cells",
             "n_peg", "n_int_peg", "n_int", "n_int_dex", "n_dex",
+            "interface_mean_x_um", "interface_std_x_um",
+            "interface_amplitude_um", "interface_slope_dx_dy",
         ])
         for fi, ff in sorted(findings.frames.items()):
             n_total = ff.n_peg + ff.n_int_peg + ff.n_int + ff.n_int_dex + ff.n_dex
@@ -150,7 +158,27 @@ def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: Experi
                 fi, f"{ff.mean_channel_width_um:.1f}",
                 n_total,
                 ff.n_peg, ff.n_int_peg, ff.n_int, ff.n_int_dex, ff.n_dex,
+                f"{ff.interface_mean_x_um:.2f}", f"{ff.interface_std_x_um:.2f}",
+                f"{ff.interface_amplitude_um:.2f}", f"{ff.interface_slope_dx_dy:.5f}",
             ])
+
+    with open(interface_path, "w", newline="") as f:
+        w = csv.writer(f)
+        w.writerow([
+            "frame_index",
+            "y_px", "x_px",
+            "y_um_from_image_center", "x_um_from_channel_center",
+            "slope_dx_dy",
+        ])
+        for fi, ff in sorted(findings.frames.items()):
+            for s in ff.interface_samples:
+                w.writerow([
+                    fi,
+                    f"{s.y_px:.2f}", f"{s.x_px:.2f}",
+                    f"{s.y_um_from_image_center:.2f}",
+                    f"{s.x_um_from_channel_center:.2f}",
+                    f"{s.slope_dx_dy:.5f}",
+                ])
 
     with open(summary_path, "w") as f:
         f.write(f"frames_total:   {findings.n_total_frames}\n")
@@ -159,7 +187,7 @@ def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: Experi
         if findings.invalid_frame_indices:
             f.write(f"invalid_frame_indices: {findings.invalid_frame_indices}\n")
 
-    print(f"[cytoscan] exported {cells_path.name}, {frames_path.name}, {summary_path.name} to {output_dir}")
+    print(f"[cytoscan] exported {cells_path.name}, {frames_path.name}, {interface_path.name}, {summary_path.name} to {output_dir}")
 
 def export_all(output_cfg: OutputConfig, experiment_dir: Path, detections: FrameDetections, findings: ExperimentFindings) -> None :
     if output_cfg.export_visuals.enabled :

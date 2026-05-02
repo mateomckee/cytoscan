@@ -28,7 +28,7 @@ class FrameFlags:
 
     @property
     def interface_valid(self) -> bool:
-        return (self.interface_signal_ratio    >= self.interface_signal_ratio_min
+        return (self.interface_signal_ratio >= self.interface_signal_ratio_min
                 and self.interface_residual_mad_px <= self.interface_residual_mad_max_px)
 
     @property
@@ -54,11 +54,15 @@ class FrameDetections:
 
     cells:              list         #list of Detection
 
+    image_w_px:         int          #cropped frame width  (varies per frame after preprocessing)
+    image_h_px:         int          #cropped frame height (constant; preprocessing doesn't crop in y)
+
     flags:              Optional[FrameFlags]
 
+#stores info in pixels
 @dataclass
 class CellDetection :
     centroid_x: float
     centroid_y: float
-    area: int           #pixels
+    area: int           
     label: int

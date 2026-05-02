@@ -8,6 +8,7 @@ import numpy as np
 from pathlib import Path
 from typing import Dict
 from dataclasses import dataclass
+import cv2
 import matplotlib.pyplot as plt
 
 from cytoscan.config import * 
@@ -48,14 +49,15 @@ def run_detections(cfg: Config, frames: Dict[int, tuple[Path, Path, Path]]) -> D
             #gather detections from the probability maps, output to detections dict if anything is detected
             dets = detect_cells(cur_prob)
 
+            #detect walls and interface, store coeffs/curve
             left_centers, left_coeffs, right_centers, right_coeffs, suggested_inset = detect_walls(cfg.detection, cfg.experiment, br)
             interface_points, interface_curve = detect_interface(cfg.detection, br, left_coeffs, right_coeffs, suggested_inset)
 
-            #store detections for this frame
-            detections[fi] = FrameDetections(br = br, fl = fl, mx = mx, cells = dets, left_centers = left_centers, left_coeffs = left_coeffs, right_centers = right_centers, right_coeffs = right_coeffs, wall_inset = suggested_inset, interface_points = interface_points, interface_curve = interface_curve, flags = None)
-            
-            fd = detections[fi]
+            #get brightfield frame dimensions (after preprocessing) for later pixel to um conversion
+            image_h_px, image_w_px = cv2.imread(str(br)).shape[:2]
 
+            #store all detection data for this frame
+            detections[fi] = FrameDetections(br = br, fl = fl, mx = mx, cells = dets, left_centers = left_centers, left_coeffs = left_coeffs, right_centers = right_centers, right_coeffs = right_coeffs, wall_inset = suggested_inset, interface_points = interface_points, interface_curve = interface_curve, image_w_px = image_w_px, image_h_px = image_h_px, flags = None)
         print(" done.")
     return detections
 
