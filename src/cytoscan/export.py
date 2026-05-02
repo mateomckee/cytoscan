@@ -71,7 +71,7 @@ def _export_frame(ev_cfg: ExportVisualsConfig, output_dir: Path, fd: FrameDetect
             "VALID" if f.frame_valid else "INVALID",
             f"wall:      {'✓' if f.walls_valid else '✗'}",
             f"interface: {'✓' if f.interface_valid else '✗'}",
-            f"width:     {'✓' if f.channel_width_valid else '✗'}",
+            f"width:     {f.mean_channel_width_um:.0f} µm",
         ]
         ax.text(10, 30, "\n".join(lines),
                 color='white', fontsize=10, fontfamily='monospace',
