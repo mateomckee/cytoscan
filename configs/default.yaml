@@ -1,0 +1,50 @@
+#
+ilastik:
+  model: "models/cells.ilp"
+  exe: "/Applications/ilastik-1.4.1.post1-arm64-OSX.app/Contents/ilastik-release/run_ilastik.sh"
+
+#experiment is requried
+experiment:
+  dir: "experiments/3000rpm_1min_Pax"
+  pixel_size_um: 2.119
+
+
+output:
+  export_visuals:
+    enabled: "true"
+    clear_existing: "true"        # complete output dir wipe on each run
+    overwrite_existing: "true"     # overwrite existing output files with same name
+    exported_frame : "brightfield"       # "brightfield" | "fluorescent" | "mixed"
+
+    #toggles specific visuals
+    cells: "true"
+    channel_walls: "true"
+    channel_walls_inset: "true"
+    channel_interface: "true"
+    roi: "true" #TODO
+    
+  export_data:
+    enabled: "true" 
+
+#developer flags      
+preprocessing:
+  expected_channel_width_um: 600.0
+  snr_threshold: 4.0
+
+detection:
+  channel_wall_degree: 2
+  channel_wall_base_inset: 15
+  channel_wall_max_inset_fraction: 0.2
+
+  channel_width_search_tolerance: 0.20
+  wall_parallelism_search_fraction: 0.05
+
+  channel_interface_smoothing_factor: 100.0
+  interface_ridge_sigma_px: 2.0
+  interface_dp_jump_penalty: 1.0
+  interface_dp_max_jump_px: 3
+
+flagging:
+  wall_anchor_strength_min: 1.8
+  interface_signal_ratio_min: 3.0
+  interface_residual_mad_max_px: 4.0

@@ -4,10 +4,10 @@ __pycache__/
 *.pyo
 .venv/
 *.egg-info/
+.eggs/
 
 #experiment data
 experiments/*/
-
 models/*.ilp
 
 /tmp/
@@ -17,3 +17,6 @@ $/
 .DS_Store
 Thumbs.db
 
+
+build/
+dist/
