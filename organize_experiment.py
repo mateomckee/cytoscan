@@ -13,9 +13,9 @@ def organize_frames(directory: str):
 
     suffixes = ['fl', 'br', 'mx']
     dirs = {
-        'fl': src / 'fluorescent',
-        'br': src / 'brightfield',
-        'mx': src / 'mixed',
+        'fl': src / 'raw/fluorescent',
+        'br': src / 'raw/brightfield',
+        'mx': src / 'raw/mixed',
     }
     for d in dirs.values():
         d.mkdir(exist_ok=True)
