@@ -40,9 +40,10 @@ class DetectionConfig(BaseModel) :
     interface_dp_max_jump_px: int = 3             # hard cap on per-row column jump in the DP
 
 class AnalysisConfig(BaseModel):
-    left_fluid:           Literal["peg", "dex"] = "peg"   # which fluid sits on the left of the interface
-    interface_band_um:    float = 50.0                    # |distance| ≤ this → category "int"
-    transition_band_um:   float = 150.0                   # interface_band_um < |distance| ≤ this → "int_peg" / "int_dex"
+    left_fluid:                  Literal["peg", "dex"] = "peg"   # which fluid sits on the left of the interface
+    interface_band_um:           float = 50.0                    # |distance| ≤ this → category "int"
+    transition_band_um:          float = 150.0                   # interface_band_um < |distance| ≤ this → "int_peg" / "int_dex"
+    interface_sample_step_px:    int = 10                        # sample step (in y) for the long-format interface.csv
 
 class FlaggingConfig(BaseModel):
     wall_anchor_strength_min:      float = 2.5    # min ratio of profile_pos at wall-x to its image-wide median

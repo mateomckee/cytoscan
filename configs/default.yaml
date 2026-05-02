@@ -5,7 +5,7 @@ ilastik:
 
 #experiment is requried
 experiment:
-  dir: "experiments/3000rpm_1min_Pax"
+  dir: "experiments/3000rpm_1min_Pre"
   pixel_size_um: 2.119
 
 output:
@@ -52,3 +52,4 @@ analysis:
   left_fluid: "dex"            # "peg" | "dex" ; which fluid sits on the left of the interface
   interface_band_um: 1.0      # |distance| ≤ this → "int"
   transition_band_um: 50.0    # interface_band_um < |distance| ≤ this → "int_peg" / "int_dex"
+  interface_sample_step_px: 10    # y-step for sampling the interface in interface.csv
