@@ -1,18 +1,25 @@
 import numpy as np
 
-from cytoscan.config import AnalysisConfig, ExperimentConfig
+from cytoscan.config import ResearchConfig, AnalysisConfig
 from cytoscan.detections import FrameDetections
 from cytoscan.findings import CellFindings, FrameFindings, ExperimentFindings, InterfaceSample, Side, Category
 
+"""
+where all the science happens. this module handles taking all stored detection data in frame detections (interface curves, cell positions, pixel positioning) and 
+filter for valid frames only, converting from pixel space to physical space, calculating distances, derivatives, etc., and quantifying to produce real,
+populus-based data for researchers to use in excel, matlab, etc.
+"""
 
-def analyze(an_cfg: AnalysisConfig, exp_cfg: ExperimentConfig, detections: dict[int, FrameDetections]) -> ExperimentFindings:
-    """Convert per-frame detections into per-cell distance/category findings.
-    Skips frames flagged invalid; records their indices on the result so the
-    skip is auditable. Distance is signed perpendicular distance from the cell
-    centroid to the interface spline (tangent-line approximation, exact in the
-    near-vertical limit and accurate to <1% for typical interface tilts)."""
-    pixel_size_um = exp_cfg.pixel_size_um
-    left_fluid:  Side = an_cfg.left_fluid
+
+"""
+Convert per-frame detections into per-cell findings.
+Skips frames flagged invalid; records their indices on the result so the
+skip is auditable. Distance is signed perpendicular distance from the cell
+centroid to the interface spline (tangent-line approximation, exact in the near-vertical limit and accurate to <1% for typical interface tilts).
+"""
+def analyze(r_cfg: ResearchConfig, an_cfg: AnalysisConfig, detections: dict[int, FrameDetections]) -> ExperimentFindings:
+    pixel_size_um = r_cfg.pixel_size_um
+    left_fluid:  Side = r_cfg.left_fluid
     right_fluid: Side = "dex" if left_fluid == "peg" else "peg"
     interface_band_um        = an_cfg.interface_band_um
     transition_band_um       = an_cfg.transition_band_um
@@ -22,6 +29,8 @@ def analyze(an_cfg: AnalysisConfig, exp_cfg: ExperimentConfig, detections: dict[
     invalid_frame_indices: list[int] = []
 
     n_total = len(detections)
+
+    #start with frame-level findings
     for fi, fd in sorted(detections.items()):
         print(f"\r[cytoscan] analyzing detections: frame {fi+1}/{n_total}", end="", flush=True)
 
@@ -36,6 +45,7 @@ def analyze(an_cfg: AnalysisConfig, exp_cfg: ExperimentConfig, detections: dict[
 
         cell_findings: list[CellFindings] = []
         n_peg = n_int_peg = n_int = n_int_dex = n_dex = 0
+        #then perform cell-level findings in each frame
         for cell in fd.cells:
             cy = float(cell.centroid_y)
             cx = float(cell.centroid_x)
@@ -73,7 +83,7 @@ def analyze(an_cfg: AnalysisConfig, exp_cfg: ExperimentConfig, detections: dict[
             elif category == "int_dex": n_int_dex += 1
             elif category == "dex":     n_dex     += 1
 
-        # ---- interface sampling (long format) + per-frame summary stats ----
+        # interface sampling (long format) + per-frame summary stats
         ys_sample_px = np.arange(0, fd.image_h_px, interface_sample_step_px, dtype=np.float64)
         xs_sample_px = spline(ys_sample_px)
         slopes_sample = (spline_deriv(ys_sample_px)
@@ -101,6 +111,7 @@ def analyze(an_cfg: AnalysisConfig, exp_cfg: ExperimentConfig, detections: dict[
         slope_fit, _ = np.polyfit(ys_um_from_center, xs_um_from_center, 1)
         interface_slope_dx_dy = float(slope_fit)
 
+        #return all frame findings as experiment findings
         frames[fi] = FrameFindings(
             frame_index             = fi,
             cells                   = cell_findings,
@@ -119,7 +130,7 @@ def analyze(an_cfg: AnalysisConfig, exp_cfg: ExperimentConfig, detections: dict[
 
     print(f" done. ({len(frames)}/{n_total} valid)")
     if invalid_frame_indices:
-        print(f"           skipped invalid: {invalid_frame_indices}")
+        print(f"           skipped invalid frames: {invalid_frame_indices}")
 
     return ExperimentFindings(
         frames                = frames,
@@ -127,10 +138,10 @@ def analyze(an_cfg: AnalysisConfig, exp_cfg: ExperimentConfig, detections: dict[
         n_total_frames        = n_total,
     )
 
-
 def _categorize(distance_abs_um: float, side: Side, interface_band_um: float, transition_band_um: float) -> Category:
     if distance_abs_um <= interface_band_um:
         return "int"
     if distance_abs_um <= transition_band_um:
         return "int_peg" if side == "peg" else "int_dex"
     return side
+

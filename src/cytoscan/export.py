@@ -6,9 +6,11 @@ from typing import Dict
 import matplotlib.pyplot as plt
 import numpy as np
 
-from cytoscan.config import OutputConfig, ExportVisualsConfig, ExportDataConfig
+from cytoscan.config import ExportVisualsConfig, ExportDataConfig
 from cytoscan.detections import FrameDetections
 from cytoscan.findings import ExperimentFindings
+
+"""module that handles all forms of program output; detection visualization, CSV formatting and writing, etc"""
 
 #return `path` if free, otherwise append _1, _2, ... until a free name is found
 def _unique_path(path: Path) -> Path:
@@ -70,8 +72,8 @@ def _export_frame(ev_cfg: ExportVisualsConfig, output_dir: Path, fd: FrameDetect
         f = fd.flags
         lines = [
             "VALID" if f.frame_valid else "INVALID",
-            f"wall:      {'✓' if f.walls_valid else '✗'}",
-            f"interface: {'✓' if f.interface_valid else '✗'}",
+            f"wall:      {'good' if f.walls_valid else 'bad'}",
+            f"interface: {'good' if f.interface_valid else 'bad'}",
             f"width:     {f.mean_channel_width_um:.0f} µm",
         ]
         ax.text(10, 30, "\n".join(lines),
@@ -91,7 +93,6 @@ def _export_frame(ev_cfg: ExportVisualsConfig, output_dir: Path, fd: FrameDetect
     plt.savefig(out_path, dpi=150)
     plt.close(fig)
 
-""" public methods """
 def export_visuals(ev_cfg: ExportVisualsConfig, experiment_dir: Path, detections: ExperimentFindings) -> None:
     if not ev_cfg.enabled: return
 
@@ -189,9 +190,9 @@ def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: Experi
 
     print(f"[cytoscan] exported {cells_path.name}, {frames_path.name}, {interface_path.name}, {summary_path.name} to {output_dir}")
 
-def export_all(output_cfg: OutputConfig, experiment_dir: Path, detections: FrameDetections, findings: ExperimentFindings) -> None :
-    if output_cfg.export_visuals.enabled :
-        export_visuals(output_cfg.export_visuals, experiment_dir, detections)
-    if output_cfg.export_data.enabled :
-        export_data(output_cfg.export_data, experiment_dir, findings)
+def export_all(ev_cfg: ExportVisualsConfig, ed_cfg: ExportDataConfig, experiment_dir: Path, detections: FrameDetections, findings: ExperimentFindings) -> None :
+    if ev_cfg.enabled :
+        export_visuals(ev_cfg, experiment_dir, detections)
+    if ed_cfg.enabled :
+        export_data(ed_cfg, experiment_dir, findings)
 

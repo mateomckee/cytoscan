@@ -3,27 +3,20 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d
 
 from cytoscan.detections import FrameDetections, FrameFlags
-from cytoscan.config import FlaggingConfig, ExperimentConfig, DetectionConfig
+from cytoscan.config import ResearchConfig, FlaggingConfig, ChannelDetectionConfig
 from cytoscan.channel_detector import _signed_vertical_edges, _load_gray
 
-
-def compute_flags_all(flagging_cfg: FlaggingConfig,
-                      detection_cfg: DetectionConfig,
-                      experiment_cfg: ExperimentConfig,
-                      detections: dict[int, FrameDetections]) -> None:
-    """Compute and attach flags to every frame in-place."""
+"""compute and attach flags to every frame in-place."""
+def compute_flags_all(r_cfg: ResearchConfig, flagging_cfg: FlaggingConfig, channeld_cfg: ChannelDetectionConfig, detections: dict[int, FrameDetections]) -> None:
     for fd in detections.values():
-        fd.flags = _compute_flags(flagging_cfg, detection_cfg, experiment_cfg, fd)
+        fd.flags = _compute_flags(r_cfg, flagging_cfg, channeld_cfg, fd)
 
-
-def _compute_flags(flagging_cfg: FlaggingConfig,
-                   detection_cfg: DetectionConfig,
-                   experiment_cfg: ExperimentConfig,
-                   fd: FrameDetections) -> FrameFlags:
+"""takes in frame detections (Dict[int, FrameDetections]) and runs validations on the detections, adding the computed flags in-place for later, downstream checking"""
+def _compute_flags(r_cfg: ResearchConfig, flagging_cfg: FlaggingConfig, channeld_cfg: ChannelDetectionConfig, fd: FrameDetections) -> FrameFlags:
     gray = _load_gray(fd.br)
     h, w = gray.shape
 
-    # ---- wall metrics ----
+    # wall metrics
     sx = _signed_vertical_edges(gray)
     profile_pos = np.maximum(sx, 0.0).sum(axis=0)
     background = max(float(np.median(profile_pos)), 1.0)
@@ -34,13 +27,13 @@ def _compute_flags(flagging_cfg: FlaggingConfig,
     right_wall_anchor_strength = float(profile_pos[right_wall_x_mean]) / background
     left_wall_anchor_strength  = float(profile_pos[left_wall_x_mean])  / background
 
-    # ---- channel width (diagnostic) ----
+    # channel width (diagnostic)
     widths_px = np.polyval(fd.right_coeffs, sample_ys) - np.polyval(fd.left_coeffs, sample_ys)
-    mean_channel_width_um = float(np.mean(widths_px) * experiment_cfg.pixel_size_um)
+    mean_channel_width_um = float(np.mean(widths_px) * r_cfg.pixel_size_um)
 
-    # ---- interface metrics ----
+    # interface metrics
     interface_signal_ratio, interface_residual_mad_px = _interface_metrics(
-        gray, fd, detection_cfg.interface_ridge_sigma_px
+        gray, fd, channeld_cfg.interface_ridge_sigma_px
     )
 
     return FrameFlags(
@@ -54,11 +47,10 @@ def _compute_flags(flagging_cfg: FlaggingConfig,
         interface_residual_mad_max_px = flagging_cfg.interface_residual_mad_max_px,
     )
 
-
 def _interface_metrics(gray: np.ndarray, fd: FrameDetections, sigma: float) -> tuple[float, float]:
-    """Return (signal_ratio, residual_mad_px). signal_ratio is the median ridge
+    """return (signal_ratio, residual_mad_px). signal_ratio is the median ridge
     response along the spline path divided by the median ridge response across
-    the inset strip — a real interface lives on the strongest ridge, so the
+    the inset strip-a real interface lives on the strongest ridge, so the
     ratio is well above 1; locks on noise sit near 1. residual_mad_px is the
     robust std of (DP path points − spline) and catches scattered/jumpy paths
     even when the ridge response is strong."""
@@ -92,7 +84,6 @@ def _interface_metrics(gray: np.ndarray, fd: FrameDetections, sigma: float) -> t
 
     return signal_ratio, residual_mad_px
 
-
 def print_flags(detections: dict[int, FrameDetections]) -> None:
     print(f"{'frame':<9}{'wallL_str':>11}{'wallR_str':>11}"
           f"{'iface_sig':>11}{'iface_mad':>11}"
@@ -106,3 +97,4 @@ def print_flags(detections: dict[int, FrameDetections]) -> None:
               f"{f.interface_residual_mad_px:>11.2f}"
               f"{f.mean_channel_width_um:>11.1f}"
               f"{str(f.frame_valid):>8}")
+

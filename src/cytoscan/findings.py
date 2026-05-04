@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 from typing import Literal
 
-Side     = Literal["peg", "dex"]
+"""datamodel class for storing analyis findings"""
+
+Side = Literal["peg", "dex"]
 Category = Literal["peg", "int_peg", "int", "int_dex", "dex"]
 
 @dataclass
@@ -27,7 +29,7 @@ class CellFindings:
 
 @dataclass
 class InterfaceSample:
-    """One (y, x) sample of the interface spline at evenly-spaced y values."""
+    """One (y, x) sample of the interface spline at evenly-spaced y values"""
     y_px:                          float
     x_px:                          float
     y_um_from_image_center:        float
@@ -45,10 +47,10 @@ class FrameFindings:
     n_dex:                int
     mean_channel_width_um: float
 
-    # interface shape (long format) — sampled via analysis.interface_sample_step_px
+    # interface shape (long format). sampled via analysis.interface_sample_step_px
     interface_samples:    list[InterfaceSample]
 
-    # interface summary stats (wide format, per-frame, all in µm relative to channel center)
+    # interface summary stats (wide format, per-frame, all in um relative to channel center)
     interface_mean_x_um:        float
     interface_std_x_um:         float    # waviness (std of x along the curve)
     interface_amplitude_um:     float    # peak-to-peak swing (max - min)

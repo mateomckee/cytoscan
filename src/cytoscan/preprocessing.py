@@ -7,8 +7,9 @@ import cv2
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
 
-from cytoscan.config import PreprocessConfig, ExperimentConfig
+from cytoscan.config import ResearchConfig, PreprocessConfig
 
+"""cleanup step before any detections run. crops frame to only include the channel, centers to the channel center to make all frames as uniform as possible"""
 
 #reads input frame (.tif/.tiff) triples (brightfield, fluorescent, mixed) and outputs them as a dictionary
 def load_frames(experiment_dir: str) -> Dict[int, tuple[Path, Path, Path]]:
@@ -34,16 +35,14 @@ def load_frames(experiment_dir: str) -> Dict[int, tuple[Path, Path, Path]]:
 
     return {i: (br, fl, mx) for i, (br, fl, mx) in enumerate(zip(br_files, fl_files, mx_files))}
 
-
-def preprocess_frames(pre_cfg: PreprocessConfig,
-                      exp_cfg: ExperimentConfig,
-                      frames: Dict[int, tuple[Path, Path, Path]]) -> None:
-    """For each frame: locate the channel center, then trim symmetrically
-    around it so the channel sits at the exact horizontal center of the
-    output. Output widths can vary between frames depending on how much
-    whitespace flanks the channel. Writes results to
-    <experiment.dir>/preprocess/ and updates `frames` in place."""
-    preprocess_dir = exp_cfg.dir / "preprocess"
+"""
+For each frame: locate the channel center, then trim symmetrically
+around it so the channel sits at the exact horizontal center of the
+output. Output widths can vary between frames depending on how much
+whitespace flanks the channel. Writes results to <experiment.dir>/preprocess/ and updates `frames` in place.
+"""
+def preprocess_frames(r_cfg: ResearchConfig, pre_cfg: PreprocessConfig, experiment_dir: Path, frames: Dict[int, tuple[Path, Path, Path]]) -> None:
+    preprocess_dir = experiment_dir / "preprocess"
 
     if pre_cfg.clear_existing and preprocess_dir.exists():
         shutil.rmtree(preprocess_dir)
@@ -54,7 +53,7 @@ def preprocess_frames(pre_cfg: PreprocessConfig,
     for d in (br_out, fl_out, mx_out):
         d.mkdir(parents=True, exist_ok=True)
 
-    expected_channel_width_px = pre_cfg.expected_channel_width_um / exp_cfg.pixel_size_um
+    expected_channel_width_px = r_cfg.channel_width_um / r_cfg.pixel_size_um
 
     invalid: list[tuple[int, str]] = []
 
@@ -92,14 +91,12 @@ def preprocess_frames(pre_cfg: PreprocessConfig,
         for fi, reason in invalid:
             print(f"           frame{fi:03d}: {reason}")
 
-
-def _find_channel_center(img: np.ndarray,
-                         expected_channel_width_px: float,
-                         snr_threshold: float) -> Tuple[Optional[int], Optional[str]]:
-    """Find the channel center via matched filter on the column-gradient profile.
-    The template is a pair of impulses separated by the expected channel width,
-    so the convolution peaks where two wall edges sit at that spacing. Returns
-    the center in input-image coordinates."""
+"""
+Find the channel center via matched filter on the column-gradient profile.
+The template is a pair of impulses separated by the expected channel width,
+so the convolution peaks where two wall edges sit at that spacing. Returns the center in input-image coordinates.
+"""
+def _find_channel_center(img: np.ndarray, expected_channel_width_px: float, snr_threshold: float) -> Tuple[Optional[int], Optional[str]]:
     if img.ndim == 3:
         img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     if img.dtype != np.uint8:
@@ -123,10 +120,10 @@ def _find_channel_center(img: np.ndarray,
 
     return center, None
 
-
 def _crop_and_write(src_path: Path, dst_dir: Path, crop_left: int, crop_right: int) -> Path:
     img = cv2.imread(str(src_path), cv2.IMREAD_UNCHANGED)
     cropped = img[:, crop_left:crop_right]
     dst_path = dst_dir / Path(src_path).name
     cv2.imwrite(str(dst_path), cropped)
     return dst_path
+

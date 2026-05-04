@@ -3,7 +3,6 @@ import sys
 import shutil
 import argparse
 import yaml
-import tempfile
 import numpy as np
 from pathlib import Path
 from typing import Dict
@@ -11,75 +10,157 @@ from dataclasses import dataclass
 import cv2
 import matplotlib.pyplot as plt
 
-from cytoscan.config import * 
+from cytoscan.config import Config, ResearchConfig, CellDetectionConfig, ChannelDetectionConfig, FlaggingConfig
 from cytoscan.preprocessing import load_frames, preprocess_frames
 from cytoscan.detections import FrameDetections
-from cytoscan.ilastik_runner import IlastikRunner
 from cytoscan.cell_detector import detect_cells
 from cytoscan.channel_detector import detect_walls, detect_interface
 from cytoscan.flagging import compute_flags_all, print_flags
 from cytoscan.analysis import analyze
-from cytoscan.export import export_visuals, export_data, export_all
+from cytoscan.export import export_all
 
-def parse_args() :
-    parser = argparse.ArgumentParser(description="Offline microscopy perception tool for cell tracking in Sun Lab experiments")
-    parser.add_argument("-c",required=False, default="configs/default.yaml", help="Config file path")
+
+LOGO = r"""
+
+╱╱╱╱╱╱╱╭╮
+╱╱╱╱╱╱╭╯╰╮
+╭━━┳╮╱┣╮╭╋━━┳━━┳━━┳━━┳━╮
+┃╭━┫┃╱┃┃┃┃╭╮┃━━┫╭━┫╭╮┃╭╮╮
+┃╰━┫╰━╯┃╰┫╰╯┣━━┃╰━┫╭╮┃┃┃┃
+╰━━┻━╮╭┻━┻━━┻━━┻━━┻╯╰┻╯╰╯
+╱╱╱╭━╯┃
+╱╱╱╰━━╯"""
+
+#get cytoscan version
+try:
+    from importlib.metadata import version as _pkg_version
+    _VERSION = _pkg_version("cytoscan")
+except Exception:
+    _VERSION = "unknown"
+
+# Default config template bundled with the package
+_DEFAULT_CONFIG_TEMPLATE = Path(__file__).parent.parent.parent / "configs" / "default.yaml"
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Offline microscopy perception tool for cell tracking in Sun Lab experiments"
+    )
+    sub = parser.add_subparsers(dest="command", metavar="<command>")
+    sub.required = True
+
+    p_init = sub.add_parser("init", help="scaffold a new cytoscan experiment directory")
+    p_init.add_argument("dir", help="path to experiment directory to create")
+
+    p_run = sub.add_parser("run", help="run the full cytoscan pipeline on an experiment")
+    p_run.add_argument("dir", help="experiment directory (must contain config.yaml)")
+
+    p_val = sub.add_parser("validate", help="run detection + flagging only and print flag table")
+    p_val.add_argument("dir", help="experiment directory (must contain config.yaml)")
+
+    sub.add_parser("version", help="print cytoscan version and environment info")
+
     return parser.parse_args()
 
-def run_detections(cfg: Config, frames: Dict[int, tuple[Path, Path, Path]]) -> Dict[int, FrameDetections]:
+def _load_config(exp_dir: str) -> Config:
+    cfg_path = Path(exp_dir) / "config.yaml"
+    if not cfg_path.exists():
+        sys.exit(f"[cytoscan] config.yaml not found in {exp_dir}. Run 'cytoscan init {exp_dir}' first")
+    return Config.load(str(cfg_path))
+
+def run_detections(r_cfg: ResearchConfig, celld_cfg: CellDetectionConfig, channeld_cfg: ChannelDetectionConfig, frames: Dict[int, tuple]) -> Dict[int, FrameDetections]:
     detections: Dict[int, FrameDetections] = {}
 
-    runner = IlastikRunner(cfg.ilastik.model, cfg.ilastik.exe)
-    n_channels = 3 #BGR from OpenCV
+    for fi, (br, fl, mx) in frames.items():
+        print(f"\r[cytoscan] running detections: frame {fi+1}/{len(frames)}", end="", flush=True)
 
-    with tempfile.TemporaryDirectory() as tmp_dir :
-        fl_frames = [fl for _, fl, _ in frames.values()]
-        runner.run_on_frames(fl_frames, tmp_dir, n_channels)
+        cell_dets = detect_cells(r_cfg, celld_cfg, fl)
 
-        for fi, (br, fl, mx) in frames.items() :
-            print(f"\r[cytoscan] running channel detections: frame {fi+1}/{len(frames)}", end="", flush=True)
+        left_centers, left_coeffs, right_centers, right_coeffs, suggested_inset = detect_walls(r_cfg, channeld_cfg, br)
+        interface_points, interface_curve = detect_interface(channeld_cfg, br, left_coeffs, right_coeffs, suggested_inset)
 
-            #get the name of the ilastik output file, which is the original filename + _Probabilities.h5, within the temp_dir
-            base = os.path.splitext(os.path.basename(fl))[0]
-            output_filename = base + "_Probabilities.h5"
+        image_h_px, image_w_px = cv2.imread(str(br)).shape[:2]
 
-            prob_path = os.path.join(tmp_dir, output_filename)
-            cur_prob = runner.read_prob_map(prob_path)
-
-            #gather detections from the probability maps, output to detections dict if anything is detected
-            dets = detect_cells(cur_prob)
-
-            #detect walls and interface, store coeffs/curve
-            left_centers, left_coeffs, right_centers, right_coeffs, suggested_inset = detect_walls(cfg.detection, cfg.experiment, br)
-            interface_points, interface_curve = detect_interface(cfg.detection, br, left_coeffs, right_coeffs, suggested_inset)
-
-            #get brightfield frame dimensions (after preprocessing) for later pixel to um conversion
-            image_h_px, image_w_px = cv2.imread(str(br)).shape[:2]
-
-            #store all detection data for this frame
-            detections[fi] = FrameDetections(br = br, fl = fl, mx = mx, cells = dets, left_centers = left_centers, left_coeffs = left_coeffs, right_centers = right_centers, right_coeffs = right_coeffs, wall_inset = suggested_inset, interface_points = interface_points, interface_curve = interface_curve, image_w_px = image_w_px, image_h_px = image_h_px, flags = None)
-        print(" done.")
+        detections[fi] = FrameDetections(
+            br=br, fl=fl, mx=mx,
+            cells=cell_dets,
+            left_centers=left_centers, left_coeffs=left_coeffs,
+            right_centers=right_centers, right_coeffs=right_coeffs,
+            wall_inset=suggested_inset,
+            interface_points=interface_points, interface_curve=interface_curve,
+            image_w_px=image_w_px, image_h_px=image_h_px,
+            flags=None,
+        )
+    print(" done.")
     return detections
 
-def main() :
-    args = parse_args()
-    cfg = Config.load(args.c)
+def cmd_init(args):
+    exp_dir = Path(args.dir)
+    exp_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"[cytoscan] config: {Path(args.c).name}, experiment: {os.path.basename(cfg.experiment.dir)}, ilastik_model: {os.path.basename(cfg.ilastik.model)}")
+    cfg_dest = exp_dir / "config.yaml"
+    if cfg_dest.exists():
+        print(f"[cytoscan] found config.yaml at {cfg_dest}. skipping")
+    else:
+        if _DEFAULT_CONFIG_TEMPLATE.exists():
+            shutil.copy(_DEFAULT_CONFIG_TEMPLATE, cfg_dest)
+        else:
+            #incase the default.yaml thats bundled in the package isn't available, generate a config.yaml with just the bare necessities 
+            cfg_dest.write_text(
+                "research:\n"
+                "   pixel_size_um: 2.119\n"
+                "   cell_diameter_um: 10\n"
+                "   channel_width_um: 600\n\n"
+            )
+        print(f"[cytoscan] created config.yaml at {cfg_dest}")
 
-    frames = load_frames(cfg.experiment.dir) 
+    print(f"[cytoscan] experiment directory ready: {exp_dir}")
+    print(f"[cytoscan] next: edit {cfg_dest}, then run 'cytoscan run {exp_dir}'")
 
-    preprocess_frames(cfg.preprocessing, cfg.experiment, frames) #updates frames map to point fi -> preprocessed frames path in a separate dir. becomes new canonical frame for rest of pipeline
+def cmd_run(args):
+    cfg = _load_config(args.dir)
+    experiment_dir = Path(args.dir)
 
-    detections = run_detections(cfg, frames)
+    #print logo cuz its cool
+    if cfg.export_visuals.enabled and cfg.export_visuals.print_logo :
+        print(LOGO, _VERSION, "\n")
 
-    compute_flags_all(cfg.flagging, cfg.detection, cfg.experiment, detections)
+    print(f"[cytoscan] experiment: {os.path.basename(experiment_dir)}")
 
-    #DEBUG print flags
-    #print_flags(detections)
+    frames = load_frames(experiment_dir)
+    preprocess_frames(cfg.research, cfg.preprocessing, experiment_dir, frames)
+    detections = run_detections(cfg.research, cfg.cell_detection, cfg.channel_detection, frames)
+    compute_flags_all(cfg.research, cfg.flagging, cfg.channel_detection, detections)
+    findings = analyze(cfg.research, cfg.analysis, detections)
+    export_all(cfg.export_visuals, cfg.export_data, experiment_dir, detections, findings)
 
-    findings = analyze(cfg.analysis, cfg.experiment, detections)
-    export_all(cfg.output, cfg.experiment.dir, detections, findings)
-    
     print("[cytoscan] completed successfully")
 
+def cmd_validate(args):
+    cfg = _load_config(args.dir)
+    research_cfg = cfg.research
+    experiment_dir = Path(args.dir)
+
+    print(f"[cytoscan] validate: {os.path.basename(experiment_dir)}")
+
+    frames = load_frames(experiment_dir)
+    preprocess_frames(cfg.research, cfg.preprocessing, experiment_dir, frames)
+    detections = run_detections(cfg.research, cfg.cell_detection, cfg.channel_detection, frames)
+    compute_flags_all(cfg.research, cfg.flagging, cfg.channel_detection, detections)
+    print_flags(detections)
+
+def cmd_version(args):
+    import platform
+    print(f"cytoscan {_VERSION}")
+    print(f"python   {platform.python_version()}")
+    print(f"opencv   {cv2.__version__}")
+    print(f"numpy    {np.__version__}")
+
+def main():
+    args = parse_args()
+    dispatch = {
+        "init":     cmd_init,
+        "run":      cmd_run,
+        "validate": cmd_validate,
+        "version":  cmd_version,
+    }
+    dispatch[args.command](args)
