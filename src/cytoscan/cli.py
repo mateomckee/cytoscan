@@ -9,9 +9,10 @@ from typing import Dict
 from dataclasses import dataclass
 import cv2
 import matplotlib.pyplot as plt
+from importlib.resources import files
 
 from cytoscan.config import Config, ResearchConfig, CellDetectionConfig, ChannelDetectionConfig, FlaggingConfig
-from cytoscan.preprocessing import load_frames, preprocess_frames
+from cytoscan.preprocessing import load_frames, preprocess_frames, scaffold_experiment
 from cytoscan.detections import FrameDetections
 from cytoscan.cell_detector import detect_cells
 from cytoscan.channel_detector import detect_walls, detect_interface
@@ -38,8 +39,8 @@ try:
 except Exception:
     _VERSION = "unknown"
 
-# Default config template bundled with the package
-_DEFAULT_CONFIG_TEMPLATE = Path(__file__).parent.parent.parent / "configs" / "default.yaml"
+def _read_default_template() -> str:
+    return files("cytoscan").joinpath("templates/default.yaml").read_text()
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -94,27 +95,20 @@ def run_detections(r_cfg: ResearchConfig, celld_cfg: CellDetectionConfig, channe
     return detections
 
 def cmd_init(args):
-    exp_dir = Path(args.dir)
-    exp_dir.mkdir(parents=True, exist_ok=True)
+    experiment_dir = Path(args.dir)
+    experiment_dir.mkdir(parents=True, exist_ok=True)
 
-    cfg_dest = exp_dir / "config.yaml"
+    cfg_dest = experiment_dir / "config.yaml"
     if cfg_dest.exists():
         print(f"[cytoscan] found config.yaml at {cfg_dest}. skipping")
     else:
-        if _DEFAULT_CONFIG_TEMPLATE.exists():
-            shutil.copy(_DEFAULT_CONFIG_TEMPLATE, cfg_dest)
-        else:
-            #incase the default.yaml thats bundled in the package isn't available, generate a config.yaml with just the bare necessities 
-            cfg_dest.write_text(
-                "research:\n"
-                "   pixel_size_um: 2.119\n"
-                "   cell_diameter_um: 10\n"
-                "   channel_width_um: 600\n\n"
-            )
+        cfg_dest.write_text(_read_default_template())
         print(f"[cytoscan] created config.yaml at {cfg_dest}")
 
-    print(f"[cytoscan] experiment directory ready: {exp_dir}")
-    print(f"[cytoscan] next: edit {cfg_dest}, then run 'cytoscan run {exp_dir}'")
+    scaffold_experiment(experiment_dir)
+
+    print(f"[cytoscan] experiment directory ready: {experiment_dir}")
+    print(f"[cytoscan] next: edit {cfg_dest}, then run 'cytoscan run {experiment_dir}'")
 
 def cmd_run(args):
     cfg = _load_config(args.dir)
