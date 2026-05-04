@@ -3,12 +3,12 @@ research:
   pixel_size_um: 2.119
   cell_diameter_um: 10
   channel_width_um: 600
-  left_fluid: "dex" #or "outer fluid" in other words
+  left_fluid: "dex"
 
 #OPTIONAL configuration. recommended default set by developer for best baseline results
 #setup config.yaml to go down in the order of pipeline events
 preprocessing:
-  expected_channel_width_um: 600.0
+  clear_existing: "true"
   snr_threshold: 4.0
 
 cell_detection:
@@ -21,6 +21,7 @@ channel_detection:
 
   channel_width_search_tolerance: 0.20
   wall_parallelism_search_fraction: 0.05
+  wall_strip_half_width: 30
 
   channel_interface_smoothing_factor: 100.0
   interface_ridge_sigma_px: 2.0
@@ -44,6 +45,7 @@ export_visuals:
   exported_frame : "brightfield"       # "brightfield" | "fluorescent" | "mixed"
 
   #toggles specific visuals
+  print_logo: "true"
   cells: "true"
   channel_walls: "true"
   channel_walls_inset: "true"
