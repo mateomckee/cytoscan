@@ -3,7 +3,6 @@ __pycache__/
 *.pyc
 *.pyo
 .venv/
-*.egg-info/
 .eggs/
 
 #experiment data
@@ -20,3 +19,16 @@ Thumbs.db
 
 build/
 dist/
+
+# pip / build artifacts
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code worktrees
+.claude/worktrees/

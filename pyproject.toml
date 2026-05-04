@@ -5,20 +5,42 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cytoscan"
 version = "0.1.0"
-description = "Cell migration analysis for microfluidic channels"
+description = "Cell migration analysis for microfluidic ATPS channels"
 readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "Mateo McKee", email = "mateomckee64@gmail.com" }]
+keywords = ["microscopy", "cell-tracking", "microfluidics", "image-analysis"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Image Processing",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+]
 dependencies = [
-    "numpy",
-    "opencv-python",
-    "pyyaml",
-    "pydantic",
-    "matplotlib",
-    "scipy",
+    "numpy>=1.24",
+    "scipy>=1.11",
+    "opencv-python>=4.8",
+    "matplotlib>=3.7",
+    "pyyaml>=6",
+    "pydantic>=2",
 ]
 
 [project.scripts]
 cytoscan = "cytoscan.cli:main"
 
+[project.urls]
+Homepage   = "https://github.com/mateomckee/cytoscan"
+Repository = "https://github.com/mateomckee/cytoscan"
+Issues     = "https://github.com/mateomckee/cytoscan/issues"
+
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+cytoscan = ["templates/*.yaml"]
