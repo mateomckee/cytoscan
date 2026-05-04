@@ -11,7 +11,7 @@ import cv2
 import matplotlib.pyplot as plt
 
 from cytoscan.config import Config, ResearchConfig, CellDetectionConfig, ChannelDetectionConfig, FlaggingConfig
-from cytoscan.preprocessing import load_frames, preprocess_frames
+from cytoscan.preprocessing import load_frames, preprocess_frames, scaffold_experiment
 from cytoscan.detections import FrameDetections
 from cytoscan.cell_detector import detect_cells
 from cytoscan.channel_detector import detect_walls, detect_interface
@@ -94,10 +94,10 @@ def run_detections(r_cfg: ResearchConfig, celld_cfg: CellDetectionConfig, channe
     return detections
 
 def cmd_init(args):
-    exp_dir = Path(args.dir)
-    exp_dir.mkdir(parents=True, exist_ok=True)
+    experiment_dir = Path(args.dir)
+    experiment_dir.mkdir(parents=True, exist_ok=True)
 
-    cfg_dest = exp_dir / "config.yaml"
+    cfg_dest = experiment_dir / "config.yaml"
     if cfg_dest.exists():
         print(f"[cytoscan] found config.yaml at {cfg_dest}. skipping")
     else:
@@ -110,11 +110,14 @@ def cmd_init(args):
                 "   pixel_size_um: 2.119\n"
                 "   cell_diameter_um: 10\n"
                 "   channel_width_um: 600\n\n"
+                "   left_fluid: \"dex\"\n\n"
             )
         print(f"[cytoscan] created config.yaml at {cfg_dest}")
 
-    print(f"[cytoscan] experiment directory ready: {exp_dir}")
-    print(f"[cytoscan] next: edit {cfg_dest}, then run 'cytoscan run {exp_dir}'")
+    scaffold_experiment(experiment_dir)
+
+    print(f"[cytoscan] experiment directory ready: {experiment_dir}")
+    print(f"[cytoscan] next: edit {cfg_dest}, then run 'cytoscan run {experiment_dir}'")
 
 def cmd_run(args):
     cfg = _load_config(args.dir)

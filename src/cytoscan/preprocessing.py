@@ -1,5 +1,7 @@
 import os
+import re
 import shutil
+import sys
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -9,13 +11,64 @@ from scipy.ndimage import gaussian_filter1d
 
 from cytoscan.config import ResearchConfig, PreprocessConfig
 
-"""cleanup step before any detections run. crops frame to only include the channel, centers to the channel center to make all frames as uniform as possible"""
+"""this module handles all frame manipulation tasks such as scaffolding the experiment dir, loading frames, and performing preprocessing on frames before detection. crops frame to only include the channel, centers to the channel center to make all frames as uniform as possible"""
+
+_SEP = r"(?:^|[_\-\s\.])"
+_END = r"(?:[_\-\s\.]|$)"
+_CHANNEL_PATTERNS = {
+    "br": re.compile(_SEP + r"(br|bf|bright(?:field)?)" + _END, re.IGNORECASE),
+    "fl": re.compile(_SEP + r"(fl|fluor(?:escent)?)"   + _END, re.IGNORECASE),
+    "mx": re.compile(_SEP + r"(mx|mix(?:ed)?|merged?)" + _END, re.IGNORECASE),
+}
+
+def _classify_frame(filename: str) -> Optional[str]:
+    matches = [k for k, pat in _CHANNEL_PATTERNS.items() if pat.search(filename)]
+    return matches[0] if len(matches) == 1 else None
+
+"""sort loose .tif files at experiment_dir's root into input/{brightfield,
+fluorescent,mixed}/ based on filename pattern (br/bf/bright, fl/fluor, mx/mix/merged)."""
+def scaffold_experiment(experiment_dir: Path) -> None:
+    files = sorted(p for p in experiment_dir.iterdir()
+                   if p.is_file() and p.suffix.lower() in (".tif", ".tiff"))
+    if not files:
+        return
+
+    if len(files) % 3 != 0:
+        sys.exit(f"[cytoscan] {experiment_dir.name}: {len(files)} files is not a multiple of 3")
+
+    grouped: dict[str, list[Path]] = {"br": [], "fl": [], "mx": []}
+    for f in files:
+        ch = _classify_frame(f.name)
+        if ch is None:
+            sys.exit(f"[cytoscan] could not classify {f.name} as br/fl/mx")
+        grouped[ch].append(f)
+
+    if not (len(grouped["br"]) == len(grouped["fl"]) == len(grouped["mx"])):
+        sys.exit(f"[cytoscan] uneven channel counts: "
+                 f"br={len(grouped['br'])}, fl={len(grouped['fl'])}, mx={len(grouped['mx'])}")
+
+    input_dir = experiment_dir / "input"
+    dirs = {
+        "br": input_dir / "brightfield",
+        "fl": input_dir / "fluorescent",
+        "mx": input_dir / "mixed",
+    }
+    for d in dirs.values():
+        d.mkdir(parents=True, exist_ok=True)
+
+    for ch, paths in grouped.items():
+        for i, f in enumerate(paths):
+            new_name = f"frame{i:03d}_{ch}{f.suffix.lower()}"
+            dest = dirs[ch] / new_name
+            if dest.exists():
+                sys.exit(f"[cytoscan] refusing to overwrite {dest}")
+            f.rename(dest)
 
 #reads input frame (.tif/.tiff) triples (brightfield, fluorescent, mixed) and outputs them as a dictionary
-def load_frames(experiment_dir: str) -> Dict[int, tuple[Path, Path, Path]]:
-    br_dir = os.path.join(experiment_dir, "raw/brightfield")
-    fl_dir = os.path.join(experiment_dir, "raw/fluorescent")
-    mx_dir = os.path.join(experiment_dir, "raw/mixed")
+def load_frames(experiment_dir: Path) -> Dict[int, tuple[Path, Path, Path]]:
+    br_dir = os.path.join(experiment_dir, "input/brightfield")
+    fl_dir = os.path.join(experiment_dir, "input/fluorescent")
+    mx_dir = os.path.join(experiment_dir, "input/mixed")
 
     def load_dir(path: str) -> list[Path]:
         encoded = os.fsencode(path)
