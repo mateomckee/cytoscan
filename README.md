@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/1186920701.svg)](https://doi.org/10.5281/zenodo.20034555)
+
 # cytoscan
 
 Cell migration analysis for microfluidic ATPS channels. Detects cells,
