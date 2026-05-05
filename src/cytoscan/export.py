@@ -30,13 +30,15 @@ def _as_callable(coeffs_or_curve):
     return lambda y: np.polyval(coeffs_or_curve, y)
 
 def _export_frame(ev_cfg: ExportVisualsConfig, output_dir: Path, fd: FrameDetections) -> None:
+    import cv2
     exported_frame = {
         "brightfield": fd.br,
         "fluorescent": fd.fl,
         "mixed":       fd.mx,
     }[ev_cfg.exported_frame]
 
-    img = plt.imread(exported_frame)
+    img_bgr = cv2.imread(str(exported_frame), cv2.IMREAD_UNCHANGED)
+    img = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB) if img_bgr.ndim == 3 else img_bgr
     h, w = img.shape[:2]
     ys = np.arange(h)
 
@@ -93,21 +95,19 @@ def _export_frame(ev_cfg: ExportVisualsConfig, output_dir: Path, fd: FrameDetect
     plt.savefig(out_path, dpi=150)
     plt.close(fig)
 
-def export_visuals(ev_cfg: ExportVisualsConfig, experiment_dir: Path, detections: ExperimentFindings) -> None:
+def export_visuals(ev_cfg: ExportVisualsConfig, experiment_dir: Path, detections: Dict[int, FrameDetections]) -> None:
     if not ev_cfg.enabled: return
-
-    plt.style.use('dark_background')
 
     output_dir = experiment_dir / "output"
 
-    #clear existing?
     if ev_cfg.clear_existing and output_dir.exists(): shutil.rmtree(output_dir)
-    
+
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    for fi, fd in detections.items():
-        print(f"\r[cytoscan] exporting visuals: frame {fi+1}/{len(detections)}", end="", flush=True)
-        _export_frame(ev_cfg, output_dir, fd)
+    with plt.style.context('dark_background'):
+        for fi, fd in detections.items():
+            print(f"\r[cytoscan] exporting visuals: frame {fi+1}/{len(detections)}", end="", flush=True)
+            _export_frame(ev_cfg, output_dir, fd)
     print(f" done. (exported to {output_dir})")
 
 def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: ExperimentFindings) -> None:
@@ -190,7 +190,7 @@ def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: Experi
 
     print(f"[cytoscan] exported {cells_path.name}, {frames_path.name}, {interface_path.name}, {summary_path.name} to {output_dir}")
 
-def export_all(ev_cfg: ExportVisualsConfig, ed_cfg: ExportDataConfig, experiment_dir: Path, detections: FrameDetections, findings: ExperimentFindings) -> None :
+def export_all(ev_cfg: ExportVisualsConfig, ed_cfg: ExportDataConfig, experiment_dir: Path, detections: Dict[int, FrameDetections], findings: ExperimentFindings) -> None :
     if ev_cfg.enabled :
         export_visuals(ev_cfg, experiment_dir, detections)
     if ed_cfg.enabled :

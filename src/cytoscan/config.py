@@ -59,8 +59,7 @@ class ExportDataConfig(BaseModel) :
     enabled: bool = True
 
 class Config(BaseModel):
-    #required, members have no default
-    research: ResearchConfig = Field(default_factory=ResearchConfig)
+    research: ResearchConfig
 
     #optional, has defaults
     preprocessing: PreprocessConfig = Field(default_factory=PreprocessConfig)
