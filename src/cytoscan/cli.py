@@ -1,17 +1,13 @@
 import os
 import sys
-import shutil
 import argparse
-import yaml
 import numpy as np
 from pathlib import Path
 from typing import Dict
-from dataclasses import dataclass
 import cv2
-import matplotlib.pyplot as plt
 from importlib.resources import files
 
-from cytoscan.config import Config, ResearchConfig, CellDetectionConfig, ChannelDetectionConfig, FlaggingConfig
+from cytoscan.config import Config, ResearchConfig, CellDetectionConfig, ChannelDetectionConfig
 from cytoscan.preprocessing import load_frames, preprocess_frames, scaffold_experiment
 from cytoscan.detections import FrameDetections
 from cytoscan.cell_detector import detect_cells
@@ -22,15 +18,16 @@ from cytoscan.export import export_all
 
 
 LOGO = r"""
+                     d8                                            
+ e88'888 Y8b Y888P  d88    e88 88e   dP"Y  e88'888  ,"Y88b 888 8e  
+d888  '8  Y8b Y8P  d88888 d888 888b C88b  d888  '8 "8" 888 888 88b 
+Y888   ,   Y8b Y    888   Y888 888P  Y88D Y888   , ,ee 888 888 888 
+ "88,e8'    888     888    "88 88"  d,dP   "88,e8' "88 888 888 888 
+            888                                                    
+"""
 
-╱╱╱╱╱╱╱╭╮
-╱╱╱╱╱╱╭╯╰╮
-╭━━┳╮╱┣╮╭╋━━┳━━┳━━┳━━┳━╮
-┃╭━┫┃╱┃┃┃┃╭╮┃━━┫╭━┫╭╮┃╭╮╮
-┃╰━┫╰━╯┃╰┫╰╯┣━━┃╰━┫╭╮┃┃┃┃
-╰━━┻━╮╭┻━┻━━┻━━┻━━┻╯╰┻╯╰╯
-╱╱╱╭━╯┃
-╱╱╱╰━━╯"""
+GREEN  = "\033[32m"
+RESET  = "\033[0m"
 
 #get cytoscan version
 try:
@@ -116,7 +113,7 @@ def cmd_run(args):
 
     #print logo cuz its cool
     if cfg.export_visuals.enabled and cfg.export_visuals.print_logo :
-        print(LOGO, _VERSION, "\n")
+        print(f"{LOGO}\t\t --- microfluidic cell perception ---\tv{_VERSION}\n")
 
     print(f"[cytoscan] experiment: {os.path.basename(experiment_dir)}")
 
@@ -127,11 +124,10 @@ def cmd_run(args):
     findings = analyze(cfg.research, cfg.analysis, detections)
     export_all(cfg.export_visuals, cfg.export_data, experiment_dir, detections, findings)
 
-    print("[cytoscan] completed successfully")
+    print(f"{GREEN}[cytoscan]{RESET} completed successfully")
 
 def cmd_validate(args):
     cfg = _load_config(args.dir)
-    research_cfg = cfg.research
     experiment_dir = Path(args.dir)
 
     print(f"[cytoscan] validate: {os.path.basename(experiment_dir)}")

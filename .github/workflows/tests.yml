@@ -1,0 +1,55 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        include:
+          - os: macos-latest
+            python-version: "3.12"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package + test deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]"
+
+      - name: Run pytest
+        run: pytest -v
+
+      - name: Smoke test CLI
+        run: |
+          cytoscan version
+          cytoscan --help
+          cytoscan init /tmp/cytoscan-smoke
+          test -f /tmp/cytoscan-smoke/config.yaml
+          test -d /tmp/cytoscan-smoke/input/brightfield
+          test -d /tmp/cytoscan-smoke/input/fluorescent
+          test -d /tmp/cytoscan-smoke/input/mixed
+
+  build:
+    name: Build check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade build twine
+      - run: python -m build
+      - run: twine check dist/*

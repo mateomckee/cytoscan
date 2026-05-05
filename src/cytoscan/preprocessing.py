@@ -28,6 +28,15 @@ def _classify_frame(filename: str) -> Optional[str]:
 """sort loose .tif files at experiment_dir's root into input/{brightfield,
 fluorescent,mixed}/ based on filename pattern (br/bf/bright, fl/fluor, mx/mix/merged)."""
 def scaffold_experiment(experiment_dir: Path) -> None:
+    input_dir = experiment_dir / "input"
+    dirs = {
+        "br": input_dir / "brightfield",
+        "fl": input_dir / "fluorescent",
+        "mx": input_dir / "mixed",
+    }
+    for d in dirs.values():
+        d.mkdir(parents=True, exist_ok=True)
+
     files = sorted(p for p in experiment_dir.iterdir()
                    if p.is_file() and p.suffix.lower() in (".tif", ".tiff"))
     if not files:
@@ -44,17 +53,8 @@ def scaffold_experiment(experiment_dir: Path) -> None:
         grouped[ch].append(f)
 
     if not (len(grouped["br"]) == len(grouped["fl"]) == len(grouped["mx"])):
-        sys.exit(f"[cytoscan] uneven channel counts: "
+        sys.exit(f"[cytoscan] uneven category counts (brightfield, fluorescent, mixed): "
                  f"br={len(grouped['br'])}, fl={len(grouped['fl'])}, mx={len(grouped['mx'])}")
-
-    input_dir = experiment_dir / "input"
-    dirs = {
-        "br": input_dir / "brightfield",
-        "fl": input_dir / "fluorescent",
-        "mx": input_dir / "mixed",
-    }
-    for d in dirs.values():
-        d.mkdir(parents=True, exist_ok=True)
 
     for ch, paths in grouped.items():
         for i, f in enumerate(paths):
@@ -70,6 +70,10 @@ def load_frames(experiment_dir: Path) -> Dict[int, tuple[Path, Path, Path]]:
     fl_dir = os.path.join(experiment_dir, "input/fluorescent")
     mx_dir = os.path.join(experiment_dir, "input/mixed")
 
+    for d in (br_dir, fl_dir, mx_dir):
+        if not os.path.isdir(d):
+            sys.exit(f"[cytoscan] missing {d}. Run 'cytoscan init {experiment_dir}' first")
+
     def load_dir(path: str) -> list[Path]:
         encoded = os.fsencode(path)
         files = []
@@ -83,8 +87,14 @@ def load_frames(experiment_dir: Path) -> Dict[int, tuple[Path, Path, Path]]:
     fl_files = load_dir(fl_dir)
     mx_files = load_dir(mx_dir)
 
+    if len(br_files) == 0:
+        sys.exit(f"[cytoscan] no .tif/.tiff frames found under {experiment_dir}/input/. "
+                 f"Drop your frames into {experiment_dir} and rerun 'cytoscan init {experiment_dir}' to sort them")
+
     if not (len(br_files) == len(fl_files) == len(mx_files)):
-        raise RuntimeError(f"frame count mismatch: {len(br_files)} br, {len(fl_files)} fl, {len(mx_files)} mx")
+        sys.exit(f"[cytoscan] frame count mismatch in {experiment_dir}/input/: "
+                 f"{len(br_files)} brightfield, {len(fl_files)} fluorescent, {len(mx_files)} mixed "
+                 f"(each frame needs all three channels)")
 
     return {i: (br, fl, mx) for i, (br, fl, mx) in enumerate(zip(br_files, fl_files, mx_files))}
 
