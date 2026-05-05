@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+title: "cytoscan: Cell migration analysis for microfluidic ATPS channels"
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - family-names: McKee
+    given-names: Mateo
+    email: mateomckee64@gmail.com
+    orcid: "https://orcid.org/0009-0005-4822-3638"
+repository-code: "https://github.com/mateomckee/cytoscan"
+url: "https://github.com/mateomckee/cytoscan"
+license: MIT
+version: 0.1.0
+date-released: "2026-05-05"
+keywords:
+  - microscopy
+  - cell-tracking
+  - microfluidics
+  - image-analysis
+  - ATPS
+abstract: >-
+  cytoscan is an offline microscopy perception tool for tracking cell
+  migration across aqueous two-phase system (ATPS) interfaces in
+  microfluidic channels. It detects channel walls, the fluid interface,
+  and individual cells from brightfield and fluorescent frames,
+  then exports per-cell physical-world coordinates and interface
+  geometry for downstream analysis.

@@ -1,9 +1,5 @@
 name: Publish to PyPI
 
-# Triggered when you push a version tag like v0.1.0, v0.2.3, etc.
-# Workflow: build wheel + sdist, smoke-test the CLI, publish via Trusted
-# Publishing (OIDC — no API tokens stored anywhere).
-
 on:
   push:
     tags:
