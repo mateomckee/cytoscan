@@ -9,6 +9,7 @@ authors:
     orcid: "https://orcid.org/0009-0005-4822-3638"
 repository-code: "https://github.com/mateomckee/cytoscan"
 url: "https://github.com/mateomckee/cytoscan"
+doi: 10.5281/zenodo.20034555
 license: MIT
 version: 0.1.1
 date-released: "2026-05-05"
