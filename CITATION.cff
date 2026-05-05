@@ -25,3 +25,8 @@ abstract: >-
   and individual cells from brightfield and fluorescent frames,
   then exports per-cell physical-world coordinates and interface
   geometry for downstream analysis.
+
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.20034555
+    description: Concept DOI for all versions
