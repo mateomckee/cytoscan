@@ -32,3 +32,5 @@ dist/
 
 # Claude Code worktrees
 .claude/worktrees/
+
+run.log

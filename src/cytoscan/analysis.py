@@ -1,8 +1,13 @@
+import logging
+
 import numpy as np
 
+from cytoscan import _logging
 from cytoscan.config import ResearchConfig, AnalysisConfig
 from cytoscan.detections import FrameDetections
 from cytoscan.findings import CellFindings, FrameFindings, ExperimentFindings, InterfaceSample, Side, Category
+
+log = logging.getLogger(__name__)
 
 """
 where all the science happens. this module handles taking all stored detection data in frame detections (interface curves, cell positions, pixel positioning) and 
@@ -31,9 +36,8 @@ def analyze(r_cfg: ResearchConfig, an_cfg: AnalysisConfig, detections: dict[int,
     n_total = len(detections)
 
     #start with frame-level findings
-    for fi, fd in sorted(detections.items()):
-        print(f"\r[cytoscan] analyzing detections: frame {fi+1}/{n_total}", end="", flush=True)
-
+    log.info("analyzing %d frames", n_total)
+    for fi, fd in _logging.progress(sorted(detections.items()), "analyzing", total=n_total):
         if fd.flags is None or not fd.flags.frame_valid or fd.interface_curve is None:
             invalid_frame_indices.append(fi)
             continue
@@ -128,9 +132,9 @@ def analyze(r_cfg: ResearchConfig, an_cfg: AnalysisConfig, detections: dict[int,
             interface_slope_dx_dy   = interface_slope_dx_dy,
         )
 
-    print(f" done. ({len(frames)}/{n_total} valid)")
+    log.info("analysis done — %d/%d frames valid", len(frames), n_total)
     if invalid_frame_indices:
-        print(f"           skipped invalid frames: {invalid_frame_indices}")
+        log.warning("skipped invalid frames: %s", invalid_frame_indices)
 
     return ExperimentFindings(
         frames                = frames,

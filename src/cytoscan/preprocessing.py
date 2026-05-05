@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 import sys
+import logging
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -9,16 +10,22 @@ import cv2
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
 
+from cytoscan import _logging
 from cytoscan.config import ResearchConfig, PreprocessConfig
+
+log = logging.getLogger(__name__)
 
 """this module handles all frame manipulation tasks such as scaffolding the experiment dir, loading frames, and performing preprocessing on frames before detection. crops frame to only include the channel, centers to the channel center to make all frames as uniform as possible"""
 
 _SEP = r"(?:^|[_\-\s\.])"
 _END = r"(?:[_\-\s\.]|$)"
+
+# matches frames categories
+# added specific matches for ch00, ch01, ch02 strings as requested by head researcher for their convenience
 _CHANNEL_PATTERNS = {
-    "br": re.compile(_SEP + r"(br|bf|bright(?:field)?)" + _END, re.IGNORECASE),
-    "fl": re.compile(_SEP + r"(fl|fluor(?:escent)?)"   + _END, re.IGNORECASE),
-    "mx": re.compile(_SEP + r"(mx|mix(?:ed)?|merged?)" + _END, re.IGNORECASE),
+    "br": re.compile(_SEP + r"((br|bf|bright(?:field)?)|(ch01))" + _END, re.IGNORECASE),
+    "fl": re.compile(_SEP + r"((fl|fluor(?:escent)?)|(ch00))"   + _END, re.IGNORECASE),
+    "mx": re.compile(_SEP + r"((mx|mix(?:ed)?|merged?)|(ch02))" + _END, re.IGNORECASE),
 }
 
 def _classify_frame(filename: str) -> Optional[str]:
@@ -28,7 +35,11 @@ def _classify_frame(filename: str) -> Optional[str]:
 """sort loose .tif files at experiment_dir's root into input/{brightfield,
 fluorescent,mixed}/ based on filename pattern (br/bf/bright, fl/fluor, mx/mix/merged)."""
 def scaffold_experiment(experiment_dir: Path) -> None:
+    # create input dir if doesnt exist
     input_dir = experiment_dir / "input"
+    input_dir.mkdir(parents=True, exist_ok=True)
+
+    # create category dirs if they dont exist
     dirs = {
         "br": input_dir / "brightfield",
         "fl": input_dir / "fluorescent",
@@ -37,32 +48,43 @@ def scaffold_experiment(experiment_dir: Path) -> None:
     for d in dirs.values():
         d.mkdir(parents=True, exist_ok=True)
 
+    # experiment structure is now complete, proceed to sort any loose frames into their categories.
+    # in order for it to be a valid experiment, all categories must have the same amount of frames
+
     files = sorted(p for p in experiment_dir.iterdir()
                    if p.is_file() and p.suffix.lower() in (".tif", ".tiff"))
     if not files:
         return
 
     if len(files) % 3 != 0:
-        sys.exit(f"[cytoscan] {experiment_dir.name}: {len(files)} files is not a multiple of 3")
+        log.error("%s: %d files is not a multiple of 3", experiment_dir.name, len(files))
+        sys.exit(1)
 
+    # go through all raw frames and place them into their category based on RE filename match
     grouped: dict[str, list[Path]] = {"br": [], "fl": [], "mx": []}
     for f in files:
         ch = _classify_frame(f.name)
         if ch is None:
-            sys.exit(f"[cytoscan] could not classify {f.name} as br/fl/mx")
+            log.error("could not classify %s as br/fl/mx", f.name)
+            sys.exit(1)
         grouped[ch].append(f)
 
+    # check for uneven category frame counts
     if not (len(grouped["br"]) == len(grouped["fl"]) == len(grouped["mx"])):
-        sys.exit(f"[cytoscan] uneven category counts (brightfield, fluorescent, mixed): "
-                 f"br={len(grouped['br'])}, fl={len(grouped['fl'])}, mx={len(grouped['mx'])}")
+        log.error("uneven category counts (brightfield, fluorescent, mixed): br=%d, fl=%d, mx=%d",
+                  len(grouped["br"]), len(grouped["fl"]), len(grouped["mx"]))
+        sys.exit(1)
 
+    # rename frames into a more uniform and clean format
     for ch, paths in grouped.items():
         for i, f in enumerate(paths):
             new_name = f"frame{i:03d}_{ch}{f.suffix.lower()}"
             dest = dirs[ch] / new_name
             if dest.exists():
-                sys.exit(f"[cytoscan] refusing to overwrite {dest}")
+                log.error("refusing to overwrite %s", dest)
+                sys.exit(1)
             f.rename(dest)
+    log.info("sorted %d frames into input/{brightfield,fluorescent,mixed}/", len(files))
 
 #reads input frame (.tif/.tiff) triples (brightfield, fluorescent, mixed) and outputs them as a dictionary
 def load_frames(experiment_dir: Path) -> Dict[int, tuple[Path, Path, Path]]:
@@ -72,7 +94,8 @@ def load_frames(experiment_dir: Path) -> Dict[int, tuple[Path, Path, Path]]:
 
     for d in (br_dir, fl_dir, mx_dir):
         if not os.path.isdir(d):
-            sys.exit(f"[cytoscan] missing {d}. Run 'cytoscan init {experiment_dir}' first")
+            log.error("missing %s. Run 'cytoscan init %s' first", d, experiment_dir)
+            sys.exit(1)
 
     def load_dir(path: str) -> list[Path]:
         encoded = os.fsencode(path)
@@ -88,13 +111,16 @@ def load_frames(experiment_dir: Path) -> Dict[int, tuple[Path, Path, Path]]:
     mx_files = load_dir(mx_dir)
 
     if len(br_files) == 0:
-        sys.exit(f"[cytoscan] no .tif/.tiff frames found under {experiment_dir}/input/. "
-                 f"Drop your frames into {experiment_dir} and rerun 'cytoscan init {experiment_dir}' to sort them")
+        log.error("no .tif/.tiff frames found under %s/input/. "
+                  "Drop your frames into %s and rerun 'cytoscan init %s' to sort them",
+                  experiment_dir, experiment_dir, experiment_dir)
+        sys.exit(1)
 
     if not (len(br_files) == len(fl_files) == len(mx_files)):
-        sys.exit(f"[cytoscan] frame count mismatch in {experiment_dir}/input/: "
-                 f"{len(br_files)} brightfield, {len(fl_files)} fluorescent, {len(mx_files)} mixed "
-                 f"(each frame needs all three channels)")
+        log.error("frame count mismatch in %s/input/: %d brightfield, %d fluorescent, %d mixed "
+                  "(each frame needs all three channels)",
+                  experiment_dir, len(br_files), len(fl_files), len(mx_files))
+        sys.exit(1)
 
     return {i: (br, fl, mx) for i, (br, fl, mx) in enumerate(zip(br_files, fl_files, mx_files))}
 
@@ -120,9 +146,8 @@ def preprocess_frames(r_cfg: ResearchConfig, pre_cfg: PreprocessConfig, experime
 
     invalid: list[tuple[int, str]] = []
 
-    for fi, (br, fl, mx) in list(frames.items()):
-        print(f"\r[cytoscan] preprocessing: frame {fi+1}/{len(frames)}", end="", flush=True)
-
+    log.info("preprocessing %d frames", len(frames))
+    for fi, (br, fl, mx) in _logging.progress(list(frames.items()), "preprocessing", total=len(frames)):
         br_img = cv2.imread(str(br), cv2.IMREAD_UNCHANGED)
         if br_img is None:
             invalid.append((fi, "could_not_load_image"))
@@ -148,11 +173,11 @@ def preprocess_frames(r_cfg: ResearchConfig, pre_cfg: PreprocessConfig, experime
 
         frames[fi] = (new_br, new_fl, new_mx)
 
-    print(f" done. (exported to {preprocess_dir})")
+    log.info("preprocessing done — exported to %s", preprocess_dir)
     if invalid:
-        print(f"[cytoscan] warning: {len(invalid)} frame(s) excluded by preprocessing:")
+        log.warning("%d frame(s) excluded by preprocessing:", len(invalid))
         for fi, reason in invalid:
-            print(f"           frame{fi:03d}: {reason}")
+            log.warning("  frame%03d: %s", fi, reason)
 
 """
 Find the channel center via matched filter on the column-gradient profile.

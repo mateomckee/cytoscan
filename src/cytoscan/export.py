@@ -1,14 +1,18 @@
 import csv
 import shutil
+import logging
 from pathlib import Path
 from typing import Dict
 
 import matplotlib.pyplot as plt
 import numpy as np
 
+from cytoscan import _logging
 from cytoscan.config import ExportVisualsConfig, ExportDataConfig
 from cytoscan.detections import FrameDetections
 from cytoscan.findings import ExperimentFindings
+
+log = logging.getLogger(__name__)
 
 """module that handles all forms of program output; detection visualization, CSV formatting and writing, etc"""
 
@@ -98,23 +102,23 @@ def _export_frame(ev_cfg: ExportVisualsConfig, output_dir: Path, fd: FrameDetect
 def export_visuals(ev_cfg: ExportVisualsConfig, experiment_dir: Path, detections: Dict[int, FrameDetections]) -> None:
     if not ev_cfg.enabled: return
 
-    output_dir = experiment_dir / "output"
+    output_dir = experiment_dir / "output/visuals"
 
     if ev_cfg.clear_existing and output_dir.exists(): shutil.rmtree(output_dir)
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    log.info("exporting visuals for %d frames", len(detections))
     with plt.style.context('dark_background'):
-        for fi, fd in detections.items():
-            print(f"\r[cytoscan] exporting visuals: frame {fi+1}/{len(detections)}", end="", flush=True)
+        for fi, fd in _logging.progress(detections.items(), "exporting visuals", total=len(detections)):
             _export_frame(ev_cfg, output_dir, fd)
-    print(f" done. (exported to {output_dir})")
+    log.info("visuals exported to %s", output_dir)
 
 def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: ExperimentFindings) -> None:
     if not ed_cfg.enabled:
         return
 
-    output_dir = experiment_dir / "output"
+    output_dir = experiment_dir / "output/data"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     cells_path     = output_dir / "cells.csv"
@@ -150,15 +154,21 @@ def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: Experi
             "frame_index", "mean_channel_width_um",
             "n_total_cells",
             "n_peg", "n_int_peg", "n_int", "n_int_dex", "n_dex",
+            "n_peg_pct", "n_int_peg_pct", "n_int_pct", "n_int_dex_pct", "n_dex_pct",
             "interface_mean_x_um", "interface_std_x_um",
             "interface_amplitude_um", "interface_slope_dx_dy",
         ])
         for fi, ff in sorted(findings.frames.items()):
             n_total = ff.n_peg + ff.n_int_peg + ff.n_int + ff.n_int_dex + ff.n_dex
+            n_peg_pct, n_int_peg_pct, n_int_pct, n_int_dex_pct, n_dex_pct = 0.0, 0.0, 0.0, 0.0, 0.0
+            if n_total != 0.0 :
+                n_peg_pct, n_int_peg_pct, n_int_pct, n_int_dex_pct, n_dex_pct = (100 * x / n_total for x in (ff.n_peg, ff.n_int_peg, ff.n_int, ff.n_int_dex, ff.n_dex))
+            
             w.writerow([
                 fi, f"{ff.mean_channel_width_um:.1f}",
                 n_total,
                 ff.n_peg, ff.n_int_peg, ff.n_int, ff.n_int_dex, ff.n_dex,
+                n_peg_pct, n_int_peg_pct, n_int_pct, n_int_dex_pct, n_dex_pct,
                 f"{ff.interface_mean_x_um:.2f}", f"{ff.interface_std_x_um:.2f}",
                 f"{ff.interface_amplitude_um:.2f}", f"{ff.interface_slope_dx_dy:.5f}",
             ])
@@ -188,7 +198,8 @@ def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: Experi
         if findings.invalid_frame_indices:
             f.write(f"invalid_frame_indices: {findings.invalid_frame_indices}\n")
 
-    print(f"[cytoscan] exported {cells_path.name}, {frames_path.name}, {interface_path.name}, {summary_path.name} to {output_dir}")
+    log.info("exported %s, %s, %s, %s to %s",
+             cells_path.name, frames_path.name, interface_path.name, summary_path.name, output_dir)
 
 def export_all(ev_cfg: ExportVisualsConfig, ed_cfg: ExportDataConfig, experiment_dir: Path, detections: Dict[int, FrameDetections], findings: ExperimentFindings) -> None :
     if ev_cfg.enabled :
