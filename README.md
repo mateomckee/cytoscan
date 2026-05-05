@@ -1,4 +1,8 @@
 [![DOI](https://zenodo.org/badge/1186920701.svg)](https://doi.org/10.5281/zenodo.20034555)
+[![PyPI](https://img.shields.io/pypi/v/cytoscan.svg)](https://pypi.org/project/cytoscan/)
+[![Python versions](https://img.shields.io/pypi/pyversions/cytoscan.svg)](https://pypi.org/project/cytoscan/)
+[![Downloads](https://static.pepy.tech/badge/cytoscan)](https://pepy.tech/project/cytoscan)
+[![License](https://img.shields.io/pypi/l/cytoscan.svg)](https://github.com/mateomckee/cytoscan/blob/main/LICENSE)
 
 # cytoscan
 
