@@ -47,27 +47,15 @@ Three global flags, usable in any position (before or after the subcommand):
 - **`-q`, `--quiet`** — WARNING-and-up only; silences INFO progress messages
 - **`--log-file PATH`** — also write a full DEBUG-level, timestamped log to `PATH` (uncolored)
 
-Examples:
-
-    cytoscan run exp/ -v                                # detailed terminal output
-    cytoscan run exp/ -q                                # silent except warnings / errors
-    cytoscan run exp/ --log-file run.log                # full file log, terminal stays at INFO
-    cytoscan run exp/ -q --log-file run.log             # quiet terminal, full log to file
-    cytoscan run exp/ > data.txt 2> log.txt             # logs separated from stdout output
-
-Progress bars are shown on an interactive terminal and automatically
-disabled when output is piped to a file or run in CI, keeping log files
-clean.
-
 ## Configuration
 
 Every run is driven by `<experiment>/config.yaml`. The main knobs:
 
-- **`research`** — `pixel_size_um`, `channel_width_um` (physical scale of your microscope and chip)
-- **`cell_detection`** — `cell_diameter_um`, `threshold` (fluorescent cell detection)
+- **`research`** — `pixel_size_um`, `channel_width_um`, `cell_diameter_um` (required config defining the physical experiment)
+- **`cell_detection`** — `threshold` (fluorescent cell detection)
 - **`channel_detection`** — wall and interface detection parameters
 - **`flagging`** — quality-gate thresholds (anchor strength, signal ratio, residual MAD)
-- **`analysis`** — `left_fluid`, `interface_band_um`, `transition_band_um` (categorization bands)
+- **`analysis`** — `interface_band_um`, `transition_band_um` (categorization bands)
 - **`export_visuals`**, **`export_data`** — output toggles
 
 ## Citing
