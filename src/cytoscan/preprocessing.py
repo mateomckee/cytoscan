@@ -17,6 +17,9 @@ log = logging.getLogger(__name__)
 
 """this module handles all frame manipulation tasks such as scaffolding the experiment dir, loading frames, and performing preprocessing on frames before detection. crops frame to only include the channel, centers to the channel center to make all frames as uniform as possible"""
 
+def _read_default_template() -> str:
+    return files("cytoscan").joinpath("templates/default.yaml").read_text()
+
 _SEP = r"(?:^|[_\-\s\.])"
 _END = r"(?:[_\-\s\.]|$)"
 
@@ -35,6 +38,18 @@ def _classify_frame(filename: str) -> Optional[str]:
 """sort loose .tif files at experiment_dir's root into input/{brightfield,
 fluorescent,mixed}/ based on filename pattern (br/bf/bright, fl/fluor, mx/mix/merged)."""
 def scaffold_experiment(experiment_dir: Path) -> None:
+    # create experiment dir if doesnt exist
+    experiment_dir.mkdir(parents=True, exist_ok=True)
+
+    cfg_dest = experiment_dir / "config.yaml"
+    
+    # create config if doesnt exist
+    if cfg_dest.exists():
+        log.info("found config.yaml at %s, skipping", cfg_dest)
+    else:
+        cfg_dest.write_text(_read_default_template())
+        log.info("created config.yaml at %s", cfg_dest)
+
     # create input dir if doesnt exist
     input_dir = experiment_dir / "input"
     input_dir.mkdir(parents=True, exist_ok=True)
@@ -85,6 +100,8 @@ def scaffold_experiment(experiment_dir: Path) -> None:
                 sys.exit(1)
             f.rename(dest)
     log.info("sorted %d frames into input/{brightfield,fluorescent,mixed}/", len(files))
+
+    log.info("experiment directory ready: %s", experiment_dir)
 
 #reads input frame (.tif/.tiff) triples (brightfield, fluorescent, mixed) and outputs them as a dictionary
 def load_frames(experiment_dir: Path) -> Dict[int, tuple[Path, Path, Path]]:
