@@ -49,9 +49,12 @@ Three global flags, usable in any position (before or after the subcommand):
 
 ## Configuration
 
-Every run is driven by `<experiment>/config.yaml`. The main knobs:
+Every run is driven by `<experiment>/config.yaml`:
 
-- **`research`** — `pixel_size_um`, `channel_width_um`, `cell_diameter_um` (required config defining the physical experiment)
+Required:
+- **`research`** — `pixel_size_um`, `channel_width_um`, ... (defines the physical experiment)
+
+Optional (defaults set by developer):
 - **`cell_detection`** — `threshold` (fluorescent cell detection)
 - **`channel_detection`** — wall and interface detection parameters
 - **`flagging`** — quality-gate thresholds (anchor strength, signal ratio, residual MAD)
