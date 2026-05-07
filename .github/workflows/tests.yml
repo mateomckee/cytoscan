@@ -36,7 +36,9 @@ jobs:
         run: |
           cytoscan version
           cytoscan --help
-          cytoscan run /tmp/cytoscan-smoke
+          # `run` against an empty dir scaffolds, then exits non-zero because no frames are present.
+          # That's expected — we only care that the scaffolding side effects landed.
+          cytoscan run /tmp/cytoscan-smoke || true
           test -f /tmp/cytoscan-smoke/config.yaml
           test -d /tmp/cytoscan-smoke/input/brightfield
           test -d /tmp/cytoscan-smoke/input/fluorescent

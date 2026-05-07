@@ -112,7 +112,7 @@ def load_frames(experiment_dir: Path) -> Dict[int, tuple[Path, Path, Path]]:
 
     for d in (br_dir, fl_dir, mx_dir):
         if not os.path.isdir(d):
-            log.error("missing %s. Run 'cytoscan init %s' first", d, experiment_dir)
+            log.error("missing %s. Please run again to scaffold the required input directories", d, experiment_dir)
             sys.exit(1)
 
     def load_dir(path: str) -> list[Path]:
@@ -128,15 +128,16 @@ def load_frames(experiment_dir: Path) -> Dict[int, tuple[Path, Path, Path]]:
     fl_files = load_dir(fl_dir)
     mx_files = load_dir(mx_dir)
 
+    #if no input files, don't fail, just end program gracefully. this is a valid usage
     if len(br_files) == 0:
-        log.error("no .tif/.tiff frames found under %s/input/. "
-                  "Drop your frames into %s and rerun 'cytoscan init %s' to sort them",
+        log.warning("no .tif/.tiff frames found under %s/input/. "
+                  "Drop your frames into %s (root) and rerun 'cytoscan run %s' to sort and process them",
                   experiment_dir, experiment_dir, experiment_dir)
-        sys.exit(1)
+        sys.exit(0)
 
     if not (len(br_files) == len(fl_files) == len(mx_files)):
         log.error("frame count mismatch in %s/input/: %d brightfield, %d fluorescent, %d mixed "
-                  "(each frame needs all three channels)",
+                  "(each frame needs all three categories)",
                   experiment_dir, len(br_files), len(fl_files), len(mx_files))
         sys.exit(1)
 
