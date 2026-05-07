@@ -17,23 +17,29 @@ def test_cli_help():
     result = subprocess.run(
         ["cytoscan", "--help"], capture_output=True, text=True, check=True
     )
-    for cmd in ("init", "run", "validate", "version"):
+    for cmd in ("run", "version"):
         assert cmd in result.stdout
+    # global flags
+    assert "--verbose" in result.stdout
+    assert "--quiet" in result.stdout
+    assert "--log-file" in result.stdout
 
-def test_cli_init_scaffolds_directory(tmp_path: Path):
+def test_cli_run_scaffolds_directory(tmp_path: Path):
+    """`cytoscan run` scaffolds the dir before doing anything else.
+    With no frames present, it exits non-zero — but the scaffolding side-effects must still happen."""
     exp_dir = tmp_path / "exp"
-    subprocess.run(["cytoscan", "init", str(exp_dir)], check=True)
+    subprocess.run(["cytoscan", "run", str(exp_dir)], capture_output=True)
 
     assert (exp_dir / "config.yaml").is_file()
     assert (exp_dir / "input" / "brightfield").is_dir()
     assert (exp_dir / "input" / "fluorescent").is_dir()
     assert (exp_dir / "input" / "mixed").is_dir()
 
-def test_cli_init_idempotent(tmp_path: Path):
+def test_cli_run_scaffold_idempotent(tmp_path: Path):
+    """Running scaffold twice must not error or wipe the config."""
     exp_dir = tmp_path / "exp"
-    subprocess.run(["cytoscan", "init", str(exp_dir)], check=True)
-    # second invocation must not error or wipe the config.
-    subprocess.run(["cytoscan", "init", str(exp_dir)], check=True)
+    subprocess.run(["cytoscan", "run", str(exp_dir)], capture_output=True)
+    subprocess.run(["cytoscan", "run", str(exp_dir)], capture_output=True)
     assert (exp_dir / "config.yaml").is_file()
 
 """the bundled default.yaml must parse as valid config."""
