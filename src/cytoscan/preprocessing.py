@@ -5,6 +5,7 @@ import sys
 import logging
 from pathlib import Path
 from typing import Dict, Optional, Tuple
+from importlib.resources import files
 
 import cv2
 import numpy as np

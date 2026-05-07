@@ -6,7 +6,6 @@ import numpy as np
 from pathlib import Path
 from typing import Dict
 import cv2
-from importlib.resources import files
 
 from cytoscan import _logging
 from cytoscan.config import Config
