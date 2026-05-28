@@ -21,11 +21,9 @@ class CellFindings:
     side:                               Side
     category:                           Category
 
-    # physical-world coords for cell tracking / speed calcs
-    # x: per-frame, per-y channel midpoint (= midway between detected walls at this y) is x=0
-    # y: image_h/2 is y=0; +y goes down (image convention) so it matches centroid_y_px
+    # physical coords (math convention: +x right, +y up; origin marker at y=0)
     centroid_x_um_from_origin:  float
-    centroid_y_um_from_origin:          float   # marker sits at canonical-frame center after preprocessing
+    centroid_y_um_from_origin:  float
 
 @dataclass
 class InterfaceSample:
@@ -34,7 +32,7 @@ class InterfaceSample:
     x_px:                          float
     y_um_from_origin:              float
     x_um_from_origin:      float
-    slope_dx_dy:                   float   # spline derivative at this y (dimensionless)
+    slope_dx_dy:                   float   # dx per um upward
 
 @dataclass
 class FrameFindings:
@@ -59,5 +57,5 @@ class FrameFindings:
 @dataclass
 class ExperimentFindings:
     frames:                  dict[int, FrameFindings]   # only valid frames
-    invalid_frame_indices:   list[int]                  # skipped, logged for audit
-    n_total_frames:          int                        # detections.keys() count before filtering
+    invalid_frame_reasons:   dict[int, str]             # frame_index -> human-readable skip reason
+    n_total_frames:          int                        # total raw frames before any filtering

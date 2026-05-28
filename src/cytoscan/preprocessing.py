@@ -149,7 +149,7 @@ around it so the channel sits at the exact horizontal center of the
 output. Output widths can vary between frames depending on how much
 whitespace flanks the channel. Writes results to <experiment.dir>/preprocess/ and updates `frames` in place.
 """
-def preprocess_frames(r_cfg: ResearchConfig, pre_cfg: PreprocessConfig, experiment_dir: Path, frames: Dict[int, tuple[Path, Path, Path]]) -> None:
+def preprocess_frames(r_cfg: ResearchConfig, pre_cfg: PreprocessConfig, experiment_dir: Path, frames: Dict[int, tuple[Path, Path, Path]]) -> Dict[int, str]:
     preprocess_dir = experiment_dir / "preprocess"
 
     if pre_cfg.clear_existing and preprocess_dir.exists():
@@ -211,6 +211,7 @@ def preprocess_frames(r_cfg: ResearchConfig, pre_cfg: PreprocessConfig, experime
         log.warning("%d frame(s) excluded by preprocessing:", len(invalid))
         for fi, reason in invalid:
             log.warning("  frame%03d: %s", fi, reason)
+    return {fi: reason for fi, reason in invalid}
 
 """
 Find the channel center via matched filter on the column-gradient profile.
@@ -233,11 +234,24 @@ def _find_channel_center(img: np.ndarray, expected_channel_width_px: float, snr_
     template[0]  = 1.0
     template[-1] = 1.0
     score = np.convolve(profile, template, mode="valid")
-    center = int(np.argmax(score)) + half
+    rough_center = int(np.argmax(score)) + half
 
     snr = score.max() / max(float(np.median(score)), 1e-9)
     if snr < snr_threshold:
         return None, f"weak_signal (peak/median = {snr:.2f}, need >= {snr_threshold})"
+
+    # snap each wall to its actual gradient peak in a small window
+    refine_window = max(8, int(round(expected_channel_width_px * 0.05)))
+    n = len(profile)
+
+    def _refine(anchor: int) -> int:
+        lo = max(0, anchor - refine_window)
+        hi = min(n, anchor + refine_window + 1)
+        return lo + int(np.argmax(profile[lo:hi]))
+
+    left_wall  = _refine(rough_center - half)
+    right_wall = _refine(rough_center + half)
+    center = (left_wall + right_wall) // 2
 
     return center, None
 
@@ -249,12 +263,9 @@ def _crop_and_write(src_path: Path, dst_dir: Path, crop_left: int, crop_right: i
     return dst_path
 
 """
-Locate the origin-marker (bright horizontal band) on the left side of the
-raw frame without assuming a known marker size. Strategy: restrict to the
-left strip, compute mean intensity per row, detrend with a wide moving
-median (kills slow vertical illumination drift), then identify the longest
-contiguous run of rows whose detrended signal exceeds a robust noise floor.
-The marker's vertical center is the midpoint of that run.
+Locate the origin-marker (bright horizontal band) on the left side of the raw
+frame: row-mean intensity → moving-median detrend → longest contiguous run of
+rows above a MAD-based threshold. Returns the band's center y in input coords.
 """
 def _find_origin_marker(img: np.ndarray, pre_cfg: PreprocessConfig) -> Tuple[Optional[int], Optional[str]]:
     if img.ndim == 3:
@@ -270,17 +281,13 @@ def _find_origin_marker(img: np.ndarray, pre_cfg: PreprocessConfig) -> Tuple[Opt
 
     row_profile = strip.mean(axis=1)
 
-    # detrend with a wide moving median (window = 1/5 of frame height) so a
-    # slow vertical brightness gradient can't masquerade as a marker.
-    bg_window = max(31, (h // 5) | 1)   # odd
+    bg_window = max(31, (h // 5) | 1)
     pad = bg_window // 2
     padded = np.pad(row_profile, pad, mode="edge")
     bg = np.array([np.median(padded[i:i + bg_window]) for i in range(len(row_profile))], dtype=np.float32)
     detrended = row_profile - bg
     detrended = gaussian_filter1d(detrended, sigma=2.0)
 
-    # noise floor from the MAD of the detrended profile, then mark any row
-    # whose brightness rises significantly above local background.
     mad = float(np.median(np.abs(detrended - np.median(detrended))) + 1e-9)
     threshold = pre_cfg.marker_snr_threshold * mad
     mask = detrended > threshold
@@ -288,7 +295,6 @@ def _find_origin_marker(img: np.ndarray, pre_cfg: PreprocessConfig) -> Tuple[Opt
     if not mask.any():
         return None, f"marker_not_found (no bright band exceeded {pre_cfg.marker_snr_threshold}×MAD={threshold:.2f})"
 
-    # longest contiguous run of True in mask = marker band
     best_start = best_len = 0
     cur_start = cur_len = 0
     for i, v in enumerate(mask):

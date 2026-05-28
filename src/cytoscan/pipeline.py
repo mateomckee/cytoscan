@@ -23,10 +23,10 @@ def run_pipeline(cfg: Config, experiment_dir: Path) :
     log.info("experiment: %s", os.path.basename(experiment_dir))
 
     frames = load_frames(experiment_dir)
-    preprocess_frames(cfg.research, cfg.preprocessing, experiment_dir, frames)
+    preprocess_invalid = preprocess_frames(cfg.research, cfg.preprocessing, experiment_dir, frames)
     detections = run_detections(cfg.research, cfg.cell_detection, cfg.channel_detection, frames)
     compute_flags_all(cfg.research, cfg.flagging, cfg.channel_detection, detections)
-    findings = analyze(cfg.research, cfg.analysis, detections)
+    findings = analyze(cfg.research, cfg.analysis, detections, preprocess_invalid)
     export_all(cfg.export_visuals, cfg.export_data, experiment_dir, detections, findings)
 
     log.info("\033[32mcompleted successfully\033[0m" if sys.stderr.isatty() else "completed successfully")

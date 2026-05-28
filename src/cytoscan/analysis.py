@@ -22,7 +22,8 @@ Skips frames flagged invalid; records their indices on the result so the
 skip is auditable. Distance is signed perpendicular distance from the cell
 centroid to the interface spline (tangent-line approximation, exact in the near-vertical limit and accurate to <1% for typical interface tilts).
 """
-def analyze(r_cfg: ResearchConfig, an_cfg: AnalysisConfig, detections: dict[int, FrameDetections]) -> ExperimentFindings:
+def analyze(r_cfg: ResearchConfig, an_cfg: AnalysisConfig, detections: dict[int, FrameDetections],
+            preprocess_invalid: dict[int, str] | None = None) -> ExperimentFindings:
     pixel_size_um = r_cfg.pixel_size_um
     left_fluid:  Side = r_cfg.left_fluid
     right_fluid: Side = "dex" if left_fluid == "peg" else "peg"
@@ -31,22 +32,21 @@ def analyze(r_cfg: ResearchConfig, an_cfg: AnalysisConfig, detections: dict[int,
     interface_sample_step_px = max(1, int(an_cfg.interface_sample_step_px))
 
     frames: dict[int, FrameFindings] = {}
-    invalid_frame_indices: list[int] = []
+    invalid_frame_reasons: dict[int, str] = dict(preprocess_invalid or {})
 
-    n_total = len(detections)
+    n_total = len(detections) + len(invalid_frame_reasons)
 
     #start with frame-level findings
     log.info("analyzing %d frames", n_total)
     for fi, fd in _logging.progress(sorted(detections.items()), "analyzing", total=n_total):
         if fd.flags is None or not fd.flags.frame_valid or fd.interface_curve is None:
-            invalid_frame_indices.append(fi)
+            invalid_frame_reasons[fi] = _flag_skip_reason(fd)
             continue
 
         spline = fd.interface_curve
         spline_deriv = spline.derivative() if hasattr(spline, "derivative") else None
 
-        # after preprocessing, the origin marker sits at exactly the canonical-frame center
-        origin_y_px = fd.image_h_px / 2.0
+        origin_y_px = fd.image_h_px / 2.0   # origin marker sits at canonical-frame center
 
         cell_findings: list[CellFindings] = []
         n_peg = n_int_peg = n_int = n_int_dex = n_dex = 0
@@ -66,7 +66,7 @@ def analyze(r_cfg: ResearchConfig, an_cfg: AnalysisConfig, detections: dict[int,
 
             channel_midpoint_x_px = (np.polyval(fd.left_coeffs, cy) + np.polyval(fd.right_coeffs, cy)) / 2.0
             centroid_x_um_from_origin = (cx - channel_midpoint_x_px) * pixel_size_um
-            centroid_y_um_from_origin         = (cy - origin_y_px)            * pixel_size_um
+            centroid_y_um_from_origin         = (origin_y_px - cy)            * pixel_size_um
 
             cell_findings.append(CellFindings(
                 centroid_x                        = cx,
@@ -91,12 +91,12 @@ def analyze(r_cfg: ResearchConfig, an_cfg: AnalysisConfig, detections: dict[int,
         # interface sampling (long format) + per-frame summary stats
         ys_sample_px = np.arange(0, fd.image_h_px, interface_sample_step_px, dtype=np.float64)
         xs_sample_px = spline(ys_sample_px)
-        slopes_sample = (spline_deriv(ys_sample_px)
+        slopes_sample = (-spline_deriv(ys_sample_px)
                          if spline_deriv is not None else np.zeros_like(ys_sample_px))
         midpoints_px = (np.polyval(fd.left_coeffs,  ys_sample_px)
                         + np.polyval(fd.right_coeffs, ys_sample_px)) / 2.0
         xs_um_from_origin = (xs_sample_px - midpoints_px) * pixel_size_um
-        ys_um_from_origin = (ys_sample_px - origin_y_px) * pixel_size_um
+        ys_um_from_origin = (origin_y_px - ys_sample_px) * pixel_size_um
 
         interface_samples = [
             InterfaceSample(
@@ -134,14 +134,33 @@ def analyze(r_cfg: ResearchConfig, an_cfg: AnalysisConfig, detections: dict[int,
         )
 
     log.info("analysis done — %d/%d frames valid", len(frames), n_total)
-    if invalid_frame_indices:
-        log.warning("skipped invalid frames: %s", invalid_frame_indices)
+    if invalid_frame_reasons:
+        log.warning("skipped invalid frames: %s", sorted(invalid_frame_reasons.keys()))
 
     return ExperimentFindings(
         frames                = frames,
-        invalid_frame_indices = invalid_frame_indices,
+        invalid_frame_reasons = invalid_frame_reasons,
         n_total_frames        = n_total,
     )
+
+def _flag_skip_reason(fd: FrameDetections) -> str:
+    if fd.flags is None:
+        return "no_flags_computed"
+    f = fd.flags
+    reasons: list[str] = []
+    if not f.walls_valid:
+        if f.left_wall_anchor_strength < f.wall_anchor_strength_min:
+            reasons.append(f"weak_left_wall ({f.left_wall_anchor_strength:.2f}<{f.wall_anchor_strength_min})")
+        if f.right_wall_anchor_strength < f.wall_anchor_strength_min:
+            reasons.append(f"weak_right_wall ({f.right_wall_anchor_strength:.2f}<{f.wall_anchor_strength_min})")
+    if not f.interface_valid:
+        if f.interface_signal_ratio < f.interface_signal_ratio_min:
+            reasons.append(f"weak_interface_signal ({f.interface_signal_ratio:.2f}<{f.interface_signal_ratio_min})")
+        if f.interface_residual_mad_px > f.interface_residual_mad_max_px:
+            reasons.append(f"noisy_interface_fit ({f.interface_residual_mad_px:.2f}>{f.interface_residual_mad_max_px})")
+    if fd.interface_curve is None and not reasons:
+        reasons.append("no_interface_curve")
+    return ", ".join(reasons) or "unknown"
 
 def _categorize(distance_abs_um: float, side: Side, interface_band_um: float, transition_band_um: float) -> Category:
     if distance_abs_um <= interface_band_um:

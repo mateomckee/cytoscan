@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cytoscan"
-version = "0.1.2"
+version = "0.2.0"
 description = "Cell migration analysis for microfluidic ATPS channels"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -36,6 +36,7 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=7"]
+gui  = ["streamlit>=1.30", "pandas>=2.0", "altair>=5"]
 
 [project.scripts]
 cytoscan = "cytoscan.cli:main"

@@ -17,7 +17,7 @@ def test_cli_help():
     result = subprocess.run(
         ["cytoscan", "--help"], capture_output=True, text=True, check=True
     )
-    for cmd in ("run", "version"):
+    for cmd in ("run", "version", "gui"):
         assert cmd in result.stdout
     # global flags
     assert "--verbose" in result.stdout

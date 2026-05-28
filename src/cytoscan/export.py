@@ -46,8 +46,18 @@ def _export_frame(ev_cfg: ExportVisualsConfig, output_dir: Path, fd: FrameDetect
     h, w = img.shape[:2]
     ys = np.arange(h)
 
-    fig, ax = plt.subplots(figsize=(8, 10))
+    dpi = 150
+    fig, ax = plt.subplots(figsize=(w / dpi, h / dpi), dpi=dpi)
+    fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
     ax.imshow(img)
+
+    # overlay sizing scales with image dimensions
+    s = max(0.5, min(2.0, h / 800.0))
+    line_w   = 1.0 * s
+    badge_fs = max(4.0, min(7.0, h / 110.0))
+    cell_fs  = max(3.0, 4.0 * s)
+    cell_mk  = 7.0 * s
+    pad_px   = max(4, int(6 * s))
 
     left_in  = fd.left_coeffs.copy();  left_in[-1]  += fd.wall_inset
     right_in = fd.right_coeffs.copy(); right_in[-1] -= fd.wall_inset
@@ -63,47 +73,53 @@ def _export_frame(ev_cfg: ExportVisualsConfig, output_dir: Path, fd: FrameDetect
         f = _as_callable(curve_or_coeffs)
         if not on or f is None:
             continue
-        ax.plot(f(ys), ys, color=color, linewidth=1)
+        ax.plot(f(ys), ys, color=color, linewidth=line_w)
 
     if ev_cfg.origin:
         origin_y = h / 2.0
         origin_x = (np.polyval(fd.left_coeffs, origin_y) + np.polyval(fd.right_coeffs, origin_y)) / 2.0
         ax.plot(origin_x, origin_y, 'o', color='magenta',
-                markersize=12, markeredgewidth=1.5, markerfacecolor='none')
-        ax.plot(origin_x, origin_y, '.', color='magenta', markersize=4)
+                markersize=10 * s, markeredgewidth=1.5 * s, markerfacecolor='none')
+        ax.plot(origin_x, origin_y, '.', color='magenta', markersize=3 * s)
 
     if ev_cfg.cells:
         for d in fd.cells:
             ax.plot(d.centroid_x, d.centroid_y, 'b+',
-                    markersize=10, markeredgewidth=1.0)
+                    markersize=cell_mk, markeredgewidth=1.0 * s)
             ax.text(d.centroid_x + 5, d.centroid_y,
                     f"({d.centroid_x:.0f}, {d.centroid_y:.0f})",
-                    color='cyan', fontsize=5)
+                    color='cyan', fontsize=cell_fs)
 
-    # validity badge
     if fd.flags is not None:
         f = fd.flags
         lines = [
             "VALID" if f.frame_valid else "INVALID",
             f"wall:      {'good' if f.walls_valid else 'bad'}",
             f"interface: {'good' if f.interface_valid else 'bad'}",
-            f"width:     {f.mean_channel_width_um:.0f} µm",
+            f"width:     {f.mean_channel_width_um:.0f} um",
         ]
-        ax.text(10, 30, "\n".join(lines),
-                color='white', fontsize=10, fontfamily='monospace',
+        bg = '#7a0000' if not f.frame_valid else 'black'
+        ax.text(pad_px, pad_px, "\n".join(lines),
+                color='white', fontsize=badge_fs, fontfamily='monospace', fontweight='bold',
                 verticalalignment='top',
-                bbox=dict(facecolor='black', alpha=0.6, pad=4, edgecolor='none'))
+                bbox=dict(facecolor=bg, alpha=0.85, pad=4,
+                          edgecolor='red' if not f.frame_valid else 'none', linewidth=2 * s))
+        if not f.frame_valid:
+            # red frame border so invalid frames are unmistakable in the gallery
+            for spine in ax.spines.values():
+                spine.set_visible(True)
+                spine.set_color('red')
+                spine.set_linewidth(max(2.0, 3.0 * s))
 
     ax.set_xlim(0, w)
     ax.set_ylim(h, 0)
     ax.axis('off')
-    plt.tight_layout()
 
     basename = Path(exported_frame).stem
     out_path = output_dir / f"output_{basename}.png"
     if not ev_cfg.overwrite_existing:
         out_path = _unique_path(out_path)
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path, dpi=dpi, bbox_inches='tight', pad_inches=0)
     plt.close(fig)
 
 def export_visuals(ev_cfg: ExportVisualsConfig, experiment_dir: Path, detections: Dict[int, FrameDetections]) -> None:
@@ -201,9 +217,11 @@ def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: Experi
     with open(summary_path, "w") as f:
         f.write(f"frames_total:   {findings.n_total_frames}\n")
         f.write(f"frames_valid:   {len(findings.frames)}\n")
-        f.write(f"frames_invalid: {len(findings.invalid_frame_indices)}\n")
-        if findings.invalid_frame_indices:
-            f.write(f"invalid_frame_indices: {findings.invalid_frame_indices}\n")
+        f.write(f"frames_invalid: {len(findings.invalid_frame_reasons)}\n")
+        if findings.invalid_frame_reasons:
+            f.write("invalid_frames:\n")
+            for fi in sorted(findings.invalid_frame_reasons.keys()):
+                f.write(f"  frame{fi:03d}: {findings.invalid_frame_reasons[fi]}\n")
 
     log.info("exported %s, %s, %s, %s to %s",
              cells_path.name, frames_path.name, interface_path.name, summary_path.name, output_dir)
