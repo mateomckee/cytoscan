@@ -24,16 +24,16 @@ class CellFindings:
     # physical-world coords for cell tracking / speed calcs
     # x: per-frame, per-y channel midpoint (= midway between detected walls at this y) is x=0
     # y: image_h/2 is y=0; +y goes down (image convention) so it matches centroid_y_px
-    centroid_x_um_from_channel_center:  float
-    centroid_y_um_from_image_center:    float
+    centroid_x_um_from_origin:  float
+    centroid_y_um_from_origin:          float   # marker sits at canonical-frame center after preprocessing
 
 @dataclass
 class InterfaceSample:
     """One (y, x) sample of the interface spline at evenly-spaced y values"""
     y_px:                          float
     x_px:                          float
-    y_um_from_image_center:        float
-    x_um_from_channel_center:      float
+    y_um_from_origin:              float
+    x_um_from_origin:      float
     slope_dx_dy:                   float   # spline derivative at this y (dimensionless)
 
 @dataclass

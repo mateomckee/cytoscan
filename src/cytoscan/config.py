@@ -10,10 +10,15 @@ class ResearchConfig(BaseModel) :
     cell_diameter_um: float
     channel_width_um: float
     left_fluid: Literal["peg", "dex"]
+    sector_length_um: float = 1300.0            # vertical extent kept around the origin marker (±sector/2)
 
 class PreprocessConfig(BaseModel) :
     clear_existing: bool = True
     snr_threshold: float = 4.0                  # smoothed-profile peak must exceed this × median
+
+    # origin-marker detection (large horizontal oval on the left side of the raw frame)
+    marker_strip_fraction: float = 0.4          # search marker in the leftmost X% of the raw frame width
+    marker_snr_threshold: float = 2.0           # bright-band peak must exceed this × MAD of the detrended profile
 
 class CellDetectionConfig(BaseModel):
     threshold: int = 100     # intensity 0–255 for binary mask of fluorescent frame
@@ -54,6 +59,7 @@ class ExportVisualsConfig(BaseModel) :
     channel_walls: bool = True
     channel_walls_inset: bool = True
     channel_interface: bool = True
+    origin: bool = True
 
 class ExportDataConfig(BaseModel) :
     enabled: bool = True
@@ -96,4 +102,6 @@ class Config(BaseModel):
             sys.exit("[cytoscan] cell_diameter_um must be a positive decimal value")
         if self.research.channel_width_um <= 0.0 :
             sys.exit("[cytoscan] channel_width_um must be a positive decimal value");
+        if self.research.sector_length_um <= 0.0 :
+            sys.exit("[cytoscan] sector_length_um must be a positive decimal value");
 

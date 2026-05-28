@@ -162,6 +162,7 @@ def preprocess_frames(r_cfg: ResearchConfig, pre_cfg: PreprocessConfig, experime
         d.mkdir(parents=True, exist_ok=True)
 
     expected_channel_width_px = r_cfg.channel_width_um / r_cfg.pixel_size_um
+    sector_half_px = int(round((r_cfg.sector_length_um / r_cfg.pixel_size_um) / 2.0))
 
     invalid: list[tuple[int, str]] = []
 
@@ -173,7 +174,7 @@ def preprocess_frames(r_cfg: ResearchConfig, pre_cfg: PreprocessConfig, experime
             del frames[fi]
             continue
 
-        w = br_img.shape[1]
+        h, w = br_img.shape[:2]
         center_x, reason = _find_channel_center(
             br_img, expected_channel_width_px, pre_cfg.snr_threshold
         )
@@ -182,13 +183,26 @@ def preprocess_frames(r_cfg: ResearchConfig, pre_cfg: PreprocessConfig, experime
             del frames[fi]
             continue
 
+        marker_y, reason = _find_origin_marker(br_img, pre_cfg)
+        if marker_y is None:
+            invalid.append((fi, reason))
+            del frames[fi]
+            continue
+
+        crop_top    = marker_y - sector_half_px
+        crop_bottom = marker_y + sector_half_px
+        if crop_top < 0 or crop_bottom > h:
+            invalid.append((fi, f"marker_too_close_to_edge (y={marker_y}, need {sector_half_px}px each side, have top={marker_y}, bottom={h - marker_y})"))
+            del frames[fi]
+            continue
+
         radius = min(center_x, w - center_x)
         crop_left  = center_x - radius
         crop_right = center_x + radius
 
-        new_br = _crop_and_write(br, br_out, crop_left, crop_right)
-        new_fl = _crop_and_write(fl, fl_out, crop_left, crop_right)
-        new_mx = _crop_and_write(mx, mx_out, crop_left, crop_right)
+        new_br = _crop_and_write(br, br_out, crop_left, crop_right, crop_top, crop_bottom)
+        new_fl = _crop_and_write(fl, fl_out, crop_left, crop_right, crop_top, crop_bottom)
+        new_mx = _crop_and_write(mx, mx_out, crop_left, crop_right, crop_top, crop_bottom)
 
         frames[fi] = (new_br, new_fl, new_mx)
 
@@ -227,10 +241,67 @@ def _find_channel_center(img: np.ndarray, expected_channel_width_px: float, snr_
 
     return center, None
 
-def _crop_and_write(src_path: Path, dst_dir: Path, crop_left: int, crop_right: int) -> Path:
+def _crop_and_write(src_path: Path, dst_dir: Path, crop_left: int, crop_right: int, crop_top: int, crop_bottom: int) -> Path:
     img = cv2.imread(str(src_path), cv2.IMREAD_UNCHANGED)
-    cropped = img[:, crop_left:crop_right]
+    cropped = img[crop_top:crop_bottom, crop_left:crop_right]
     dst_path = dst_dir / Path(src_path).name
     cv2.imwrite(str(dst_path), cropped)
     return dst_path
+
+"""
+Locate the origin-marker (bright horizontal band) on the left side of the
+raw frame without assuming a known marker size. Strategy: restrict to the
+left strip, compute mean intensity per row, detrend with a wide moving
+median (kills slow vertical illumination drift), then identify the longest
+contiguous run of rows whose detrended signal exceeds a robust noise floor.
+The marker's vertical center is the midpoint of that run.
+"""
+def _find_origin_marker(img: np.ndarray, pre_cfg: PreprocessConfig) -> Tuple[Optional[int], Optional[str]]:
+    if img.ndim == 3:
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = img
+    if gray.dtype != np.uint8:
+        gray = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+
+    h, w = gray.shape[:2]
+    strip_w = max(1, int(round(w * pre_cfg.marker_strip_fraction)))
+    strip = gray[:, :strip_w].astype(np.float32)
+
+    row_profile = strip.mean(axis=1)
+
+    # detrend with a wide moving median (window = 1/5 of frame height) so a
+    # slow vertical brightness gradient can't masquerade as a marker.
+    bg_window = max(31, (h // 5) | 1)   # odd
+    pad = bg_window // 2
+    padded = np.pad(row_profile, pad, mode="edge")
+    bg = np.array([np.median(padded[i:i + bg_window]) for i in range(len(row_profile))], dtype=np.float32)
+    detrended = row_profile - bg
+    detrended = gaussian_filter1d(detrended, sigma=2.0)
+
+    # noise floor from the MAD of the detrended profile, then mark any row
+    # whose brightness rises significantly above local background.
+    mad = float(np.median(np.abs(detrended - np.median(detrended))) + 1e-9)
+    threshold = pre_cfg.marker_snr_threshold * mad
+    mask = detrended > threshold
+
+    if not mask.any():
+        return None, f"marker_not_found (no bright band exceeded {pre_cfg.marker_snr_threshold}×MAD={threshold:.2f})"
+
+    # longest contiguous run of True in mask = marker band
+    best_start = best_len = 0
+    cur_start = cur_len = 0
+    for i, v in enumerate(mask):
+        if v:
+            if cur_len == 0:
+                cur_start = i
+            cur_len += 1
+            if cur_len > best_len:
+                best_len = cur_len
+                best_start = cur_start
+        else:
+            cur_len = 0
+
+    marker_cy = best_start + best_len // 2
+    return int(marker_cy), None
 

@@ -55,7 +55,7 @@ class FrameDetections:
     cells:              list         #list of Detection
 
     image_w_px:         int          #cropped frame width  (varies per frame after preprocessing)
-    image_h_px:         int          #cropped frame height (constant; preprocessing doesn't crop in y)
+    image_h_px:         int          #cropped frame height (constant across frames; = sector_length_um / pixel_size_um after preprocessing)
 
     flags:              Optional[FrameFlags]
 

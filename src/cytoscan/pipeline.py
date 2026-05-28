@@ -2,6 +2,7 @@ import sys
 import os
 import logging
 import cv2
+import numpy as np
 
 from cytoscan import _logging
 from cytoscan.config import Config, ResearchConfig, CellDetectionConfig, ChannelDetectionConfig
@@ -40,6 +41,14 @@ def run_detections(r_cfg: ResearchConfig, celld_cfg: CellDetectionConfig, channe
         left_centers, left_coeffs, right_centers, right_coeffs, suggested_inset = detect_walls(r_cfg, channeld_cfg, br)
         interface_points, interface_curve = detect_interface(channeld_cfg, br, left_coeffs, right_coeffs, suggested_inset)
 
+        # drop cells whose centroid falls outside the detected channel walls
+        n_before = len(cell_dets)
+        cell_dets = [
+            c for c in cell_dets
+            if np.polyval(left_coeffs, c.centroid_y) <= c.centroid_x <= np.polyval(right_coeffs, c.centroid_y)
+        ]
+        n_dropped = n_before - len(cell_dets)
+
         image_h_px, image_w_px = cv2.imread(str(br)).shape[:2]
 
         detections[fi] = FrameDetections(
@@ -52,6 +61,6 @@ def run_detections(r_cfg: ResearchConfig, celld_cfg: CellDetectionConfig, channe
             image_w_px=image_w_px, image_h_px=image_h_px,
             flags=None,
         )
-        log.debug("frame %d: %d cells, wall_inset=%d", fi, len(cell_dets), suggested_inset)
+        log.debug("frame %d: %d cells (dropped %d outside walls), wall_inset=%d", fi, len(cell_dets), n_dropped, suggested_inset)
     return detections
 

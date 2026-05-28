@@ -65,6 +65,13 @@ def _export_frame(ev_cfg: ExportVisualsConfig, output_dir: Path, fd: FrameDetect
             continue
         ax.plot(f(ys), ys, color=color, linewidth=1)
 
+    if ev_cfg.origin:
+        origin_y = h / 2.0
+        origin_x = (np.polyval(fd.left_coeffs, origin_y) + np.polyval(fd.right_coeffs, origin_y)) / 2.0
+        ax.plot(origin_x, origin_y, 'o', color='magenta',
+                markersize=12, markeredgewidth=1.5, markerfacecolor='none')
+        ax.plot(origin_x, origin_y, '.', color='magenta', markersize=4)
+
     if ev_cfg.cells:
         for d in fd.cells:
             ax.plot(d.centroid_x, d.centroid_y, 'b+',
@@ -131,7 +138,7 @@ def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: Experi
         w.writerow([
             "frame_index", "label",
             "centroid_x_px", "centroid_y_px", "area_px2",
-            "centroid_x_um_from_channel_center", "centroid_y_um_from_image_center",
+            "centroid_x_um_from_origin", "centroid_y_um_from_origin",
             "interface_x_at_y_px",
             "distance_signed_um", "distance_abs_um",
             "side", "category",
@@ -141,8 +148,8 @@ def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: Experi
                 w.writerow([
                     fi, c.label,
                     f"{c.centroid_x:.2f}", f"{c.centroid_y:.2f}", c.area,
-                    f"{c.centroid_x_um_from_channel_center:.2f}",
-                    f"{c.centroid_y_um_from_image_center:.2f}",
+                    f"{c.centroid_x_um_from_origin:.2f}",
+                    f"{c.centroid_y_um_from_origin:.2f}",
                     f"{c.interface_x_at_y_px:.2f}",
                     f"{c.distance_signed_um:.2f}", f"{c.distance_abs_um:.2f}",
                     c.side, c.category,
@@ -168,7 +175,7 @@ def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: Experi
                 fi, f"{ff.mean_channel_width_um:.1f}",
                 n_total,
                 ff.n_peg, ff.n_int_peg, ff.n_int, ff.n_int_dex, ff.n_dex,
-                n_peg_pct, n_int_peg_pct, n_int_pct, n_int_dex_pct, n_dex_pct,
+                f"{n_peg_pct:.2f}", f"{n_int_peg_pct:.2f}", f"{n_int_pct:.2f}", f"{n_int_dex_pct:.2f}", f"{n_dex_pct:.2f}",
                 f"{ff.interface_mean_x_um:.2f}", f"{ff.interface_std_x_um:.2f}",
                 f"{ff.interface_amplitude_um:.2f}", f"{ff.interface_slope_dx_dy:.5f}",
             ])
@@ -178,7 +185,7 @@ def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: Experi
         w.writerow([
             "frame_index",
             "y_px", "x_px",
-            "y_um_from_image_center", "x_um_from_channel_center",
+            "y_um_from_origin", "x_um_from_origin",
             "slope_dx_dy",
         ])
         for fi, ff in sorted(findings.frames.items()):
@@ -186,8 +193,8 @@ def export_data(ed_cfg: ExportDataConfig, experiment_dir: Path, findings: Experi
                 w.writerow([
                     fi,
                     f"{s.y_px:.2f}", f"{s.x_px:.2f}",
-                    f"{s.y_um_from_image_center:.2f}",
-                    f"{s.x_um_from_channel_center:.2f}",
+                    f"{s.y_um_from_origin:.2f}",
+                    f"{s.x_um_from_origin:.2f}",
                     f"{s.slope_dx_dy:.5f}",
                 ])
 

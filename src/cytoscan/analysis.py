@@ -45,7 +45,8 @@ def analyze(r_cfg: ResearchConfig, an_cfg: AnalysisConfig, detections: dict[int,
         spline = fd.interface_curve
         spline_deriv = spline.derivative() if hasattr(spline, "derivative") else None
 
-        image_h_half_px = fd.image_h_px / 2.0
+        # after preprocessing, the origin marker sits at exactly the canonical-frame center
+        origin_y_px = fd.image_h_px / 2.0
 
         cell_findings: list[CellFindings] = []
         n_peg = n_int_peg = n_int = n_int_dex = n_dex = 0
@@ -64,8 +65,8 @@ def analyze(r_cfg: ResearchConfig, an_cfg: AnalysisConfig, detections: dict[int,
             category = _categorize(distance_abs_um, side, interface_band_um, transition_band_um)
 
             channel_midpoint_x_px = (np.polyval(fd.left_coeffs, cy) + np.polyval(fd.right_coeffs, cy)) / 2.0
-            centroid_x_um_from_channel_center = (cx - channel_midpoint_x_px) * pixel_size_um
-            centroid_y_um_from_image_center   = (cy - image_h_half_px)       * pixel_size_um
+            centroid_x_um_from_origin = (cx - channel_midpoint_x_px) * pixel_size_um
+            centroid_y_um_from_origin         = (cy - origin_y_px)            * pixel_size_um
 
             cell_findings.append(CellFindings(
                 centroid_x                        = cx,
@@ -77,8 +78,8 @@ def analyze(r_cfg: ResearchConfig, an_cfg: AnalysisConfig, detections: dict[int,
                 distance_abs_um                   = distance_abs_um,
                 side                              = side,
                 category                          = category,
-                centroid_x_um_from_channel_center = centroid_x_um_from_channel_center,
-                centroid_y_um_from_image_center   = centroid_y_um_from_image_center,
+                centroid_x_um_from_origin = centroid_x_um_from_origin,
+                centroid_y_um_from_origin         = centroid_y_um_from_origin,
             ))
 
             if   category == "peg":     n_peg     += 1
@@ -94,25 +95,25 @@ def analyze(r_cfg: ResearchConfig, an_cfg: AnalysisConfig, detections: dict[int,
                          if spline_deriv is not None else np.zeros_like(ys_sample_px))
         midpoints_px = (np.polyval(fd.left_coeffs,  ys_sample_px)
                         + np.polyval(fd.right_coeffs, ys_sample_px)) / 2.0
-        xs_um_from_center = (xs_sample_px - midpoints_px) * pixel_size_um
-        ys_um_from_center = (ys_sample_px - image_h_half_px) * pixel_size_um
+        xs_um_from_origin = (xs_sample_px - midpoints_px) * pixel_size_um
+        ys_um_from_origin = (ys_sample_px - origin_y_px) * pixel_size_um
 
         interface_samples = [
             InterfaceSample(
                 y_px                       = float(ys_sample_px[i]),
                 x_px                       = float(xs_sample_px[i]),
-                y_um_from_image_center     = float(ys_um_from_center[i]),
-                x_um_from_channel_center   = float(xs_um_from_center[i]),
+                y_um_from_origin           = float(ys_um_from_origin[i]),
+                x_um_from_origin           = float(xs_um_from_origin[i]),
                 slope_dx_dy                = float(slopes_sample[i]),
             )
             for i in range(len(ys_sample_px))
         ]
 
-        interface_mean_x_um    = float(np.mean(xs_um_from_center))
-        interface_std_x_um     = float(np.std(xs_um_from_center))
-        interface_amplitude_um = float(xs_um_from_center.max() - xs_um_from_center.min())
+        interface_mean_x_um    = float(np.mean(xs_um_from_origin))
+        interface_std_x_um     = float(np.std(xs_um_from_origin))
+        interface_amplitude_um = float(xs_um_from_origin.max() - xs_um_from_origin.min())
         # linear fit of x_um vs y_um → slope as dimensionless dx/dy
-        slope_fit, _ = np.polyfit(ys_um_from_center, xs_um_from_center, 1)
+        slope_fit, _ = np.polyfit(ys_um_from_origin, xs_um_from_origin, 1)
         interface_slope_dx_dy = float(slope_fit)
 
         #return all frame findings as experiment findings
