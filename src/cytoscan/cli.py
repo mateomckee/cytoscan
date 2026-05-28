@@ -56,6 +56,9 @@ def parse_args():
     sub.add_parser("version", parents=[common],
                    help="print cytoscan version and environment info")
 
+    sub.add_parser("gui", parents=[common],
+                   help="launch the streamlit GUI (requires `pip install cytoscan[gui]`)")
+
     return parser.parse_args()
 
 def _load_config(exp_dir: str) -> Config:
@@ -78,6 +81,20 @@ def cmd_run(args):
 
     run_pipeline(cfg, Path(args.dir))
 
+def cmd_gui(args):
+    try:
+        from streamlit.web import cli as stcli
+    except ImportError:
+        sys.exit("[cytoscan] streamlit not installed. run: pip install 'cytoscan[gui]'")
+    gui_path = Path(__file__).with_name("gui.py")
+    sys.argv = [
+        "streamlit", "run", str(gui_path),
+        "--server.headless=false",
+        "--theme.base=dark",
+        "--theme.primaryColor=#4a9eff",
+    ]
+    sys.exit(stcli.main())
+
 def cmd_version(args):
     # plain stdout, `cytoscan version` is a data command (greppable, parseable)
     import platform
@@ -96,6 +113,7 @@ def main():
     dispatch = {
         "run":      cmd_run,
         "version":  cmd_version,
+        "gui":      cmd_gui,
     }
     try:
         dispatch[args.command](args)

@@ -4,12 +4,15 @@ research:
   cell_diameter_um: 10
   channel_width_um: 600
   left_fluid: "dex"
+  sector_length_um: 1500     # vertical um kept around the detected origin marker (±sector/2)
 
 #OPTIONAL configuration. recommended default set by developer for best baseline results
 #setup config.yaml to go down in the order of pipeline events
 preprocessing:
   clear_existing: "true"
   snr_threshold: 4.0
+  marker_strip_fraction: 0.4
+  marker_snr_threshold: 2.0
 
 cell_detection:
   threshold: 100            # 0–255 intensity for binary mask of fluorescent frame
@@ -50,6 +53,7 @@ export_visuals:
   channel_walls: "true"
   channel_walls_inset: "true"
   channel_interface: "true"
-  
+  origin: "true"
+
 export_data:
   enabled: "true" 

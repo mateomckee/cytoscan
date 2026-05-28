@@ -18,6 +18,7 @@ category data ready for downstream analysis in Excel / MATLAB / Python.
 ## Quickstart
 
     cytoscan run my_experiment            # scaffold dir + config, then run the full pipeline
+    cytoscan gui                          # launch the streamlit GUI (pip install 'cytoscan[gui]')
     cytoscan version                      # version + dependency info
 
 On the first invocation against a fresh directory, `run` will:

@@ -2,6 +2,7 @@ import sys
 import os
 import logging
 import cv2
+import numpy as np
 
 from cytoscan import _logging
 from cytoscan.config import Config, ResearchConfig, CellDetectionConfig, ChannelDetectionConfig
@@ -22,10 +23,10 @@ def run_pipeline(cfg: Config, experiment_dir: Path) :
     log.info("experiment: %s", os.path.basename(experiment_dir))
 
     frames = load_frames(experiment_dir)
-    preprocess_frames(cfg.research, cfg.preprocessing, experiment_dir, frames)
+    preprocess_invalid = preprocess_frames(cfg.research, cfg.preprocessing, experiment_dir, frames)
     detections = run_detections(cfg.research, cfg.cell_detection, cfg.channel_detection, frames)
     compute_flags_all(cfg.research, cfg.flagging, cfg.channel_detection, detections)
-    findings = analyze(cfg.research, cfg.analysis, detections)
+    findings = analyze(cfg.research, cfg.analysis, detections, preprocess_invalid)
     export_all(cfg.export_visuals, cfg.export_data, experiment_dir, detections, findings)
 
     log.info("\033[32mcompleted successfully\033[0m" if sys.stderr.isatty() else "completed successfully")
@@ -40,6 +41,14 @@ def run_detections(r_cfg: ResearchConfig, celld_cfg: CellDetectionConfig, channe
         left_centers, left_coeffs, right_centers, right_coeffs, suggested_inset = detect_walls(r_cfg, channeld_cfg, br)
         interface_points, interface_curve = detect_interface(channeld_cfg, br, left_coeffs, right_coeffs, suggested_inset)
 
+        # drop cells whose centroid falls outside the detected channel walls
+        n_before = len(cell_dets)
+        cell_dets = [
+            c for c in cell_dets
+            if np.polyval(left_coeffs, c.centroid_y) <= c.centroid_x <= np.polyval(right_coeffs, c.centroid_y)
+        ]
+        n_dropped = n_before - len(cell_dets)
+
         image_h_px, image_w_px = cv2.imread(str(br)).shape[:2]
 
         detections[fi] = FrameDetections(
@@ -52,6 +61,6 @@ def run_detections(r_cfg: ResearchConfig, celld_cfg: CellDetectionConfig, channe
             image_w_px=image_w_px, image_h_px=image_h_px,
             flags=None,
         )
-        log.debug("frame %d: %d cells, wall_inset=%d", fi, len(cell_dets), suggested_inset)
+        log.debug("frame %d: %d cells (dropped %d outside walls), wall_inset=%d", fi, len(cell_dets), n_dropped, suggested_inset)
     return detections
 
