@@ -86,10 +86,22 @@ def cmd_gui(args):
         from streamlit.web import cli as stcli
     except ImportError:
         sys.exit("[cytoscan] streamlit not installed. run: pip install 'cytoscan[gui]'")
+
+    # skip streamlit's first-run email prompt by pre-creating an empty credentials
+    # file (only if the user doesn't already have one of their own).
+    creds = Path.home() / ".streamlit" / "credentials.toml"
+    if not creds.exists():
+        creds.parent.mkdir(parents=True, exist_ok=True)
+        creds.write_text('[general]\nemail = ""\n')
+
     gui_path = Path(__file__).with_name("gui.py")
     sys.argv = [
         "streamlit", "run", str(gui_path),
         "--server.headless=false",
+        "--browser.gatherUsageStats=false",
+        "--global.showWarningOnDirectExecution=false",
+        "--logger.level=error",
+        "--client.toolbarMode=minimal",
         "--theme.base=dark",
         "--theme.primaryColor=#4a9eff",
     ]
