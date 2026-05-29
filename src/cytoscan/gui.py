@@ -82,6 +82,16 @@ _CSS = """
   .cs-metrics b { color: #fff; }
   .cs-metrics .sep { color: #4a4a4a; padding: 0 0.5rem; }
 
+  /* keep streamlit's tooltip help icons visible next to widget labels */
+  section[data-testid="stSidebar"] [data-testid="stTooltipIcon"],
+  section[data-testid="stSidebar"] [data-testid="stTooltipHoverTarget"],
+  section[data-testid="stSidebar"] [data-testid="InfoIcon"] {
+    display: inline-flex !important;
+    opacity: 0.7 !important;
+    visibility: visible !important;
+    margin-left: 0.3rem;
+  }
+
   /* sidebar logo (ascii art) */
   .cs-logo {
     font-family: ui-monospace, Menlo, monospace;
@@ -95,10 +105,17 @@ _CSS = """
   section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
     padding-top: 0.6rem !important;
   }
+  /* sidebar scrolls only when content overflows; thin native scrollbar */
   section[data-testid="stSidebar"] > div,
   section[data-testid="stSidebar"] [data-testid="stSidebarContent"],
   section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
-    overflow: hidden !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    scrollbar-width: thin;
+  }
+  section[data-testid="stSidebar"] ::-webkit-scrollbar { width: 6px; }
+  section[data-testid="stSidebar"] ::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.12); border-radius: 3px;
   }
   section[data-testid="stSidebar"] h3 {
     font-family: ui-monospace, Menlo, monospace;
@@ -123,7 +140,13 @@ _CSS = """
     background: transparent !important; border: none !important;
     box-shadow: none !important;
   }
-  .stNumberInput button { display: none !important; }
+  /* hide only the +/- step buttons (by their aria-label / testid) so the
+     tooltip help button next to the widget label stays visible. */
+  .stNumberInput button[aria-label*="ncrement"],
+  .stNumberInput button[aria-label*="ecrement"],
+  .stNumberInput button[data-testid*="Step"] {
+    display: none !important;
+  }
 
   /* tabs, slider */
   .stTabs [data-baseweb="tab-list"] { gap: 1rem; }
@@ -168,19 +191,74 @@ _CSS = """
   .cs-banner-success { background: #0e2e16; color: #bcf2c8; border: 1px solid #2a7a3e; }
   .cs-banner-error   { background: #3a0e10; color: #ffc4c4; border: 1px solid #8a2c30; }
   .cs-banner-info    { background: #102536; color: #c0e0ff; border: 1px solid #2c5a8a; }
+  /* sidebar spinner renders inline below the run button. small, mono, blue */
+  section[data-testid="stSidebar"] [data-testid="stSpinner"] {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 0.78rem; color: #c9d1d9;
+    margin: 0.45rem 0 0; padding: 0;
+    background: transparent; border: none;
+  }
+  section[data-testid="stSidebar"] [data-testid="stSpinner"] > div {
+    gap: 0.4rem; align-items: center;
+  }
+  section[data-testid="stSidebar"] [data-testid="stSpinner"] svg,
+  section[data-testid="stSidebar"] [data-testid="stSpinner"] i {
+    width: 12px !important; height: 12px !important;
+    border-color: #4a9eff transparent #4a9eff transparent !important;
+  }
   @keyframes cs-in {
     from { opacity: 0; transform: translateY(-8px); }
     to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes cs-dots {
+    0%   { content: ''; }
+    25%  { content: '.'; }
+    50%  { content: '..'; }
+    75%, 100% { content: '...'; }
   }
 </style>
 """
 st.markdown(_CSS, unsafe_allow_html=True)
 
-# clear persisted sidebar-closed state so reloads don't flash-collapse it
+# clear persisted sidebar-closed state so reloads don't flash-collapse it,
+# and stop number inputs from swallowing wheel events (so users can scroll
+# the sidebar while their cursor is over an input).
 components.html(
-    "<script>try { for (const k of Object.keys(window.parent.localStorage)) "
-    "if (k.toLowerCase().includes('sidebar')) window.parent.localStorage.removeItem(k); } "
-    "catch (_) {}</script>",
+    """
+    <script>
+      const doc = window.parent.document;
+      try {
+        for (const k of Object.keys(window.parent.localStorage))
+          if (k.toLowerCase().includes('sidebar'))
+            window.parent.localStorage.removeItem(k);
+      } catch (_) {}
+
+      if (!doc.__cyWheelGuard) {
+        doc.__cyWheelGuard = true;
+        // when the wheel fires over a sidebar input, scroll the sidebar
+        // explicitly instead of letting the input swallow the event.
+        doc.addEventListener('wheel', (e) => {
+          const t = e.target;
+          if (!t || !t.closest) return;
+          const sidebar = t.closest('section[data-testid="stSidebar"]');
+          if (!sidebar) return;
+          const onWidget = t.closest('input, textarea, select, '
+            + '[data-baseweb="input"], [data-baseweb="select"], '
+            + '[data-baseweb="textarea"]');
+          if (!onWidget) return;
+          // find the scrollable container inside the sidebar
+          const scroller = sidebar.querySelector(
+            '[data-testid="stSidebarUserContent"], [data-testid="stSidebarContent"]'
+          ) || sidebar;
+          scroller.scrollTop += e.deltaY;
+          e.preventDefault();
+          if (doc.activeElement && doc.activeElement.blur) {
+            try { doc.activeElement.blur(); } catch (_) {}
+          }
+        }, { passive: false, capture: true });
+      }
+    </script>
+    """,
     height=0,
 )
 
@@ -228,9 +306,12 @@ def _load_yaml_config(exp_dir: Path | None) -> dict:
         return {}
 
 
-def _write_research_overrides(exp_dir: Path, research: dict) -> None:
+def _write_overrides(exp_dir: Path, overrides: dict[str, dict]) -> None:
+    """Merge UI overrides (section -> {key: value}) into config.yaml, preserving
+    every other section."""
     raw = _load_yaml_config(exp_dir)
-    raw.setdefault("research", {}).update(research)
+    for section, kvs in overrides.items():
+        raw.setdefault(section, {}).update(kvs)
     with open(exp_dir / "config.yaml", "w") as f:
         yaml.safe_dump(raw, f, sort_keys=False)
 
@@ -272,7 +353,7 @@ def _capture_run(exp_dir: Path, verbose: bool, overrides: dict) -> tuple[bool, s
     ok = True
     try:
         scaffold_experiment(exp_dir)
-        _write_research_overrides(exp_dir, overrides)
+        _write_overrides(exp_dir, overrides)
         cfg = Config.load(str(exp_dir / "config.yaml"))
         run_pipeline(cfg, exp_dir)
     except SystemExit as e:
@@ -355,36 +436,57 @@ with st.sidebar:
     exp_dir = Path(exp_dir_str).expanduser() if exp_dir_str else None
 
     st.markdown("### research config")
-    research = _load_yaml_config(exp_dir).get("research", {})
-    if not isinstance(research, dict):
-        research = {}
+    _cfg_raw = _load_yaml_config(exp_dir)
+    research   = _cfg_raw.get("research", {})       if isinstance(_cfg_raw.get("research"),       dict) else {}
+    cell_det   = _cfg_raw.get("cell_detection", {}) if isinstance(_cfg_raw.get("cell_detection"), dict) else {}
+    visuals    = _cfg_raw.get("export_visuals", {}) if isinstance(_cfg_raw.get("export_visuals"), dict) else {}
+
     pixel_size_um = st.number_input(
         "pixel_size_um", min_value=0.001, max_value=100.0,
         value=float(research.get("pixel_size_um", 2.119)),
         step=0.001, format="%.3f",
+        help="physical size of one pixel in micrometers",
     )
     cell_diameter_um = st.number_input(
         "cell_diameter_um", min_value=0.1, max_value=1000.0,
         value=float(research.get("cell_diameter_um", 10.0)),
         step=0.5, format="%.2f",
+        help="typical cell diameter in micrometers",
     )
     channel_width_um = st.number_input(
         "channel_width_um", min_value=1.0, max_value=10000.0,
         value=float(research.get("channel_width_um", 600.0)),
         step=10.0, format="%.1f",
+        help="physical width of the microfluidic channel in micrometers",
     )
     sector_length_um = st.number_input(
         "sector_length_um", min_value=1.0, max_value=100000.0,
         value=float(research.get("sector_length_um", 1000.0)),
         step=100.0, format="%.1f",
+        help="vertical extent kept around the origin marker (±sector/2 per frame)",
     )
     left_fluid = st.selectbox(
         "left_fluid", options=["dex", "peg"],
         index=0 if str(research.get("left_fluid", "dex")) == "dex" else 1,
+        help="which fluid sits on the left half of the channel",
+    )
+    cell_threshold = st.number_input(
+        "cell_detection_threshold", min_value=0, max_value=255,
+        value=int(cell_det.get("threshold", 100)), step=1,
+        help="brightness cutoff (0 to 255) for marking pixels as cells in the fluorescent frame",
+    )
+    _frames = ["brightfield", "fluorescent", "mixed"]
+    exported_frame = st.selectbox(
+        "exported_frame", options=_frames,
+        index=_frames.index(str(visuals.get("exported_frame", "brightfield")))
+              if str(visuals.get("exported_frame", "brightfield")) in _frames else 0,
+        help="which raw frame to draw detections onto in the output visuals",
     )
 
-    verbose = st.toggle("verbose logging (DEBUG)", value=False)
+    verbose = st.toggle("verbose logging (DEBUG)", value=False,
+                        help="record detailed per frame diagnostics in the log output")
     run_clicked = st.button("▶ start experiment", type="primary", use_container_width=True)
+    spinner_slot = st.empty()   # spinner during a run lives here
 
 
 # ─── run handler ───────────────────────────────────────────────────────────────
@@ -393,22 +495,37 @@ if run_clicked:
         _banner("error", f"directory does not exist: {exp_dir_str or '(empty)'}")
     else:
         overrides = {
-            "pixel_size_um":    float(pixel_size_um),
-            "cell_diameter_um": float(cell_diameter_um),
-            "channel_width_um": float(channel_width_um),
-            "sector_length_um": float(sector_length_um),
-            "left_fluid":       str(left_fluid),
+            "research": {
+                "pixel_size_um":    float(pixel_size_um),
+                "cell_diameter_um": float(cell_diameter_um),
+                "channel_width_um": float(channel_width_um),
+                "sector_length_um": float(sector_length_um),
+                "left_fluid":       str(left_fluid),
+            },
+            "cell_detection": {"threshold": int(cell_threshold)},
+            "export_visuals": {"exported_frame": str(exported_frame)},
         }
-        with st.spinner("processing experiment..."):
+        with spinner_slot, st.spinner("processing experiment"):
             ok, log_text, errors = _capture_run(exp_dir, verbose, overrides)
         if ok:
-            _banner("success", "experiment completed", auto_dismiss_ms=3500)
             st.session_state["ran_this_session"] = str(exp_dir)
-        else:
-            for i, msg in enumerate(errors or ["experiment failed. see log."]):
-                _banner("error", msg, top_rem=1.0 + i * 3.2)
-        with st.expander("log output", expanded=not ok):
-            st.code(log_text or "(no log output)", language="text")
+        # persist run state across reruns so frame switches don't wipe it
+        st.session_state["last_log_text"]   = log_text
+        st.session_state["last_log_ok"]     = ok
+        st.session_state["last_log_dir"]    = str(exp_dir)
+        st.session_state["last_log_errors"] = errors or []
+
+# render status banner + log expander whenever there's a stored run for this dir
+if (exp_dir and st.session_state.get("last_log_dir") == str(exp_dir)
+        and st.session_state.get("last_log_text") is not None):
+    if st.session_state.get("last_log_ok", True):
+        _banner("success", "experiment completed")
+    else:
+        for i, msg in enumerate(st.session_state.get("last_log_errors")
+                                or ["experiment failed. see log."]):
+            _banner("error", msg, top_rem=1.0 + i * 3.2)
+    with st.expander("log output", expanded=not st.session_state.get("last_log_ok", True)):
+        st.code(st.session_state["last_log_text"] or "(no log output)", language="text")
 
 
 # ─── viewer guards ─────────────────────────────────────────────────────────────
@@ -480,7 +597,7 @@ with left_top:
                     horizontal=True, label_visibility="collapsed")
 with right_top:
     _, prev_col, next_col = st.columns([4, 1, 1])
-    show_arrows = n_frames > 0 and mode in ("both", "visuals")
+    show_arrows = n_frames > 0
     if show_arrows:
         prev_col.button("◀", key="prev_btn", on_click=_prev, use_container_width=True,
                         disabled=st.session_state["frame_pos"] <= 0)
@@ -600,6 +717,10 @@ def _render_data(container) -> None:
 if mode == "visuals":
     _render_visual(st)
 elif mode == "data":
+    if n_frames > 1:
+        st.slider("frame", 0, n_frames - 1, key="frame_pos", label_visibility="collapsed")
+    elif n_frames == 1:
+        st.session_state["frame_pos"] = 0
     _render_data(st)
 else:
     col_a, col_b = st.columns([1, 1], gap="large")
@@ -608,14 +729,19 @@ else:
 
 
 # ─── arrow-key hotkeys ─────────────────────────────────────────────────────────
-if visual_files and mode in ("both", "visuals"):
+if n_frames > 0:
     components.html(
         """
         <script>
           (function() {
             const doc = window.parent.document;
-            if (doc.__cyKeyDown)
-              doc.removeEventListener('keydown', doc.__cyKeyDown, true);
+            const INITIAL_DELAY = 300;   // ms before auto-repeat starts
+            const REPEAT_DELAY  = 90;    // ms between subsequent clicks while held
+
+            // tear down any previous listeners + timers so reruns don't stack
+            if (doc.__cyKeyDown) doc.removeEventListener('keydown', doc.__cyKeyDown, true);
+            if (doc.__cyKeyUp)   doc.removeEventListener('keyup',   doc.__cyKeyUp,   true);
+            if (doc.__cyRepeat)  { clearTimeout(doc.__cyRepeat); doc.__cyRepeat = null; }
 
             const findBtn = (txt) => {
               for (const b of doc.querySelectorAll('button'))
@@ -623,18 +749,49 @@ if visual_files and mode in ("both", "visuals"):
               return null;
             };
 
-            const onKey = (e) => {
+            const clickArrow = (key) => {
+              const btn = findBtn(key === 'ArrowLeft' ? '◀' : '▶');
+              if (btn && !btn.disabled) { btn.click(); return true; }
+              return false;
+            };
+
+            const stopRepeat = () => {
+              if (doc.__cyRepeat) { clearTimeout(doc.__cyRepeat); doc.__cyRepeat = null; }
+              doc.__cyHeldKey = null;
+            };
+
+            const onKeyDown = (e) => {
               if (e.target && ['INPUT','TEXTAREA'].includes(e.target.tagName)) return;
               if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
               e.preventDefault(); e.stopImmediatePropagation();
+              if (e.repeat) return;   // ignore OS auto-repeat, our timer drives it
               if (doc.activeElement && doc.activeElement !== doc.body) {
                 try { doc.activeElement.blur(); } catch (_) {}
               }
-              const btn = findBtn(e.key === 'ArrowLeft' ? '◀' : '▶');
-              if (btn && !btn.disabled) btn.click();
+              // first click is immediate, then schedule the auto-repeat loop
+              clickArrow(e.key);
+              stopRepeat();
+              doc.__cyHeldKey = e.key;
+              const tick = () => {
+                if (doc.__cyHeldKey !== e.key) return;
+                if (!clickArrow(e.key)) { stopRepeat(); return; }
+                doc.__cyRepeat = setTimeout(tick, REPEAT_DELAY);
+              };
+              doc.__cyRepeat = setTimeout(tick, INITIAL_DELAY);
             };
-            doc.__cyKeyDown = onKey;
-            doc.addEventListener('keydown', onKey, true);
+
+            const onKeyUp = (e) => {
+              if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+              e.preventDefault(); e.stopImmediatePropagation();
+              stopRepeat();
+            };
+
+            doc.__cyKeyDown = onKeyDown;
+            doc.__cyKeyUp   = onKeyUp;
+            doc.addEventListener('keydown', onKeyDown, true);
+            doc.addEventListener('keyup',   onKeyUp,   true);
+            // safety: if the page loses focus mid-hold, stop the loop
+            window.parent.addEventListener('blur', stopRepeat, { once: false });
           })();
         </script>
         """,
